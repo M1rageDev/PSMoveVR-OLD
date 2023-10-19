@@ -3,6 +3,7 @@
 
 #include "PS3EYEDriver/src/ps3eye.h"
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/core_c.h>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -30,6 +31,7 @@ bool GlLogCall(const char* function, const char* file, int line) {
                   ASSERT(GlLogCall(#x, __FILE__, __LINE__))
 
 GLFWwindow* window;
+GLuint camTexture;
 
 int main(int argc, char** argv)
 {
@@ -64,15 +66,13 @@ int main(int argc, char** argv)
 	eye->getFrame(videoPixels);
 	cv::Mat camImg(videoSize, CV_8UC3, videoPixels);
 
-	GLuint camTexture;
 	glGenTextures(1, &camTexture);
 	glBindTexture(GL_TEXTURE_2D, camTexture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 640, 480, 0, GL_RGB, GL_UNSIGNED_BYTE, &videoPixels);
-	std::cout << "[Opengl Error] (" << glGetError() << ") " << GL_INVALID_OPERATION << std::endl;
+	GlCall(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 640, 480, 0, GL_RGB, GL_UNSIGNED_BYTE, videoPixels));
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -91,15 +91,14 @@ int main(int argc, char** argv)
 
 		eye->getFrame(videoPixels);
 		camImg = cv::Mat(videoSize, CV_8UC3, videoPixels);
-		glBindTexture(GL_TEXTURE_2D, camTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, &videoPixels);
+		cv::Mat colored;
+		cv::cvtColor(camImg, colored, 4);
+		glBindTexture(GL_TEXTURE_2D, camTexture);	
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, colored.ptr());
 
 		ImGui::Begin("n");
 		ImGui::Text("Running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-		ImVec2 pos = ImGui::GetWindowPos();
-		ImGui::GetWindowDrawList()->AddImage(
-			(void*)(intptr_t)camTexture, pos,
-			ImVec2(pos.x + 640, pos.y + 480));
+		ImGui::Image((void*)(intptr_t)camTexture, ImVec2(640, 480));
 		ImGui::End();
 
 		ImGui::Render();
@@ -108,11 +107,11 @@ int main(int argc, char** argv)
 		glfwPollEvents();
 	}
 
+	eye->stop();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 	glfwTerminate();
-	eye->stop();
 	
 	return 0;
 }
