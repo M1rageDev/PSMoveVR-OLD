@@ -18,90 +18,115 @@
     <ClCompile Include="PSMoveVR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="include\glad\glad.c">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\imgui.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\imgui_demo.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\imgui_draw.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\imgui_tables.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\imgui_widgets.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\backends\imgui_impl_glfw.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\backends\imgui_impl_opengl2.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\backends\imgui_impl_opengl3.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.89.9\backends\imgui_impl_win32.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\PS3EYEDriver\src\ps3eye.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
     <ClCompile Include="include\PS3EYEDriver\src\ps3eye_capi.cpp">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClCompile>
-    <ClCompile Include="include\glad\glad.c">
-      <Filter>Header Files</Filter>
+    <ClCompile Include="MadgwickAHRS.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Shader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGuiGL.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\glad\glad.h">
+      <Filter>Resource Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imconfig.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imgui.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imgui_internal.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imstb_rectpack.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imstb_textedit.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\imstb_truetype.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_glfw.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_opengl2.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_opengl3.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_opengl3_loader.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_win32.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\PS3EYEDriver\src\ps3eye.h">
-      <Filter>Header Files</Filter>
+      <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="include\PS3EYEDriver\src\ps3eye_capi.h">
+      <Filter>Resource Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ControllerHandler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\glad\glad.h">
+    <ClInclude Include="MagwickAHRS.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="include\imgui.ini">
+    <ClInclude Include="Shader.h">
       <Filter>Header Files</Filter>
-    </None>
+    </ClInclude>
+    <ClInclude Include="RenderObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGuiGL.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Macros.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
