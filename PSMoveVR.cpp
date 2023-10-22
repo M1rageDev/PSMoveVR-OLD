@@ -85,7 +85,7 @@ int main(int argc, char** argv)
 	ImGuiGL controllerWindow = ImGuiGL(640, 480);
 
 	glm::mat4 trans = glm::mat4(1.f);
-	trans = glm::translate(trans, glm::vec3(0.f, 0.f, 0.f));
+	trans = glm::translate(trans, glm::vec3(0.f, 0.f, -4.f));
 	glm::mat4 proj = glm::perspective(glm::radians(70.f), (float)640 / (float)480, 0.01f, 100.0f);
 
 	// realtime video texture

@@ -1,40 +1,3 @@
-#include "RenderObject.h"
-
-size_t split(const std::string& txt, std::vector<std::string>& strs, char ch)
-{
-	size_t pos = txt.find(ch);
-	size_t initialPos = 0;
-	strs.clear();
-
-	while (pos != std::string::npos) {
-		strs.push_back(txt.substr(initialPos, pos - initialPos));
-		initialPos = pos + 1;
-
-		pos = txt.find(ch, initialPos);
-	}
-
-	strs.push_back(txt.substr(initialPos, std::min(pos, txt.size()) - initialPos + 1));
-
-	return strs.size();
-}
-
-RenderObject::RenderObject() {
-
-}
-
-RenderObject::RenderObject(Shader* shader_) {
-	shader = shader_;
-}
-
-RenderObject::~RenderObject() {
-}
-
-void RenderObject::Draw() {
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glDrawElements(GL_TRIANGLES, triLength, GL_UNSIGNED_INT, 0);
-}
-
 void RenderObject::LoadModel(std::string path) {
 	std::ifstream reader(path);
 
@@ -72,14 +35,13 @@ void RenderObject::LoadModel(std::string path) {
 					verts.push_back(positions[posIndex].z);
 					verts.push_back(uvs[uvIndex].x);
 					verts.push_back(uvs[uvIndex].y);
-					tris.push_back(verts.size() / 5 - 1);
+					tris.push_back(posIndex);
 				}
 			}
 		}
 		reader.close();
 	}
 
-	unsigned int vertLength = verts.size();
 	triLength = tris.size();
 
 	glGenVertexArrays(1, &VAO);
@@ -89,10 +51,10 @@ void RenderObject::LoadModel(std::string path) {
 	glBindVertexArray(VAO);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(verts[0]) * verts.size(), verts.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(verts.data()), verts.data(), GL_STATIC_DRAW);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(tris[0]) * tris.size(), tris.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(tris.data()), tris.data(), GL_STATIC_DRAW);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);

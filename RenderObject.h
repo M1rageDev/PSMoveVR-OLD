@@ -17,8 +17,5 @@ public:
 private:
 	GLuint VBO, VAO, EBO;
 	Shader* shader;
-	float* vertices;
-	unsigned int vertLength;
-	unsigned int* triangles;
 	unsigned int triLength;
 };
