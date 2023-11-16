@@ -73,7 +73,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>E:\Programowanie\Projekty\C++\PSMoveVR\include;C:\opencv\opencv\build\include;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;$(IncludePath)</IncludePath>
     <LibraryPath>C:\opencv\opencv\build\x64\vc16\bin;opencv_world480d.lib;C:\opencv\opencv\build\x64\vc16\lib;E:\Programowanie\Projekty\C++\PSMoveVR\lib;$(LibraryPath)</LibraryPath>
-    <SourcePath>E:\Programowanie\Projekty\C++\PSMoveVR\include\glad;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;E:\Programowanie\Projekty\C++\PSMoveVR\include\PS3EYEDriver\src;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;$(SourcePath)</SourcePath>
+    <SourcePath>E:\Programowanie\Projekty\C++\PSMoveVR\include\glad;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;E:\Programowanie\Projekty\C++\PSMoveVR\include\PS3EYEDriver\src;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;E:\Programowanie\Projekty\C++\PSMoveVR\include;$(SourcePath)</SourcePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -151,10 +151,13 @@
     <ClCompile Include="PSMoveVR.cpp" />
     <ClCompile Include="RenderObject.cpp" />
     <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="stb_image.cpp" />
+    <ClCompile Include="Texture.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ControllerHandler.h" />
     <ClInclude Include="ImGuiGL.h" />
+    <ClInclude Include="IMUCalibration.h" />
     <ClInclude Include="include\glad\glad.h" />
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_glfw.h" />
     <ClInclude Include="include\imgui-1.89.9\backends\imgui_impl_opengl2.h" />
@@ -171,8 +174,13 @@
     <ClInclude Include="include\PS3EYEDriver\src\ps3eye_capi.h" />
     <ClInclude Include="Macros.h" />
     <ClInclude Include="MagwickAHRS.h" />
+    <ClInclude Include="OpticalDetection.h" />
+    <ClInclude Include="RenderGrid.h" />
     <ClInclude Include="RenderObject.h" />
     <ClInclude Include="Shader.h" />
+    <ClInclude Include="stb_image.h" />
+    <ClInclude Include="Texture.h" />
+    <ClInclude Include="VRMath.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

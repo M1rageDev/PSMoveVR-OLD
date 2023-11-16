@@ -40,6 +40,7 @@ void RenderObject::LoadModel(std::string path) {
 
 	std::vector<glm::vec3> positions;
 	std::vector<glm::vec2> uvs;
+	std::vector<glm::vec3> normals;
 	std::vector<float> verts;
 	std::vector<unsigned int> tris;
 
@@ -61,18 +62,28 @@ void RenderObject::LoadModel(std::string path) {
 				float v = std::stof(parts[2]);
 				uvs.emplace_back(u, v);
 			}
+			else if (parts[0] == "vn") {
+				float x = std::stof(parts[1]);
+				float y = std::stof(parts[2]);
+				float z = std::stof(parts[3]);
+				normals.emplace_back(x, y, z);
+			}
 			else if (parts[0] == "f") {
 				for (int i = 1; i <= 3; i++) {
 					std::vector<std::string> indices;
 					split(parts[i], indices, '/');
 					int posIndex = std::stoi(indices[0]) - 1;
 					int uvIndex = std::stoi(indices[1]) - 1;
+					int normalIndex = std::stoi(indices[2]) - 1;
 					verts.push_back(positions[posIndex].x);
 					verts.push_back(positions[posIndex].y);
 					verts.push_back(positions[posIndex].z);
 					verts.push_back(uvs[uvIndex].x);
 					verts.push_back(uvs[uvIndex].y);
-					tris.push_back(verts.size() / 5 - 1);
+					verts.push_back(normals[normalIndex].x);
+					verts.push_back(normals[normalIndex].y);
+					verts.push_back(normals[normalIndex].z);
+					tris.push_back(verts.size() / 8 - 1);
 				}
 			}
 		}
@@ -94,10 +105,12 @@ void RenderObject::LoadModel(std::string path) {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(tris[0]) * tris.size(), tris.data(), GL_STATIC_DRAW);
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+	glEnableVertexAttribArray(2);
 
 	return;
 }

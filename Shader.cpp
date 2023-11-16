@@ -80,8 +80,13 @@ void Shader::Use() {
 }
 
 void Shader::SetMatrix4(const char* name, glm::mat4 value) {
-	Use();
 	int location = glGetUniformLocation(handle, name);
 
 	glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+}
+
+void Shader::SetInt(const char* name, int value) {
+	int location = glGetUniformLocation(handle, name);
+
+	glUniform1i(location, value);
 }
