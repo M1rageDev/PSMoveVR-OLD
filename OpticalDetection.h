@@ -13,7 +13,10 @@
 
 #include "VRMath.h"
 
-glm::vec3 detectBall(cv::Mat frame, cv::Mat colorL, cv::Mat colorH) {
+cv::Scalar OPTICAL_COLOR_L;
+cv::Scalar OPTICAL_COLOR_H;
+
+glm::vec3 detectBall(cv::Mat frame) {
 	cv::Mat hsvFrame;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
@@ -21,7 +24,7 @@ glm::vec3 detectBall(cv::Mat frame, cv::Mat colorL, cv::Mat colorH) {
 	cv::Mat mask;
 	cv::Mat eroded;
 	cv::Mat inRange;
-	cv::inRange(hsvFrame, colorL, colorH, inRange);
+	cv::inRange(hsvFrame, OPTICAL_COLOR_L, OPTICAL_COLOR_H, inRange);
 	cv::erode(inRange, eroded, cv::Mat(), minus1Point, 2);
 	cv::dilate(eroded, mask, cv::Mat(), minus1Point, 2);
 	
@@ -46,7 +49,7 @@ glm::vec3 detectBall(cv::Mat frame, cv::Mat colorL, cv::Mat colorH) {
 	}
 }
 
-std::tuple<cv::Mat, cv::Mat, cv::Mat> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
+cv::Mat calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
 	cv::Mat hsvFrame, detected;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
@@ -57,9 +60,9 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> calibrateColor(cv::Mat frame, float hCente
 	float vMin = vrmath::clamp(vCenter - vRange, 0.f, 255.f);
 	float vMax = vrmath::clamp(vCenter + vRange, 0.f, 255.f);
 
-	cv::Mat low(hMin, sMin, vMin);
-	cv::Mat high(hMax, sMax, vMax);
-	cv::inRange(hsvFrame, low, high, detected);
+	OPTICAL_COLOR_L = cv::Scalar(hMin, sMin, vMin);
+	OPTICAL_COLOR_H = cv::Scalar(hMax, sMax, vMax);
+	cv::inRange(hsvFrame, OPTICAL_COLOR_L, OPTICAL_COLOR_H, detected);
 
-	return std::tuple<cv::Mat, cv::Mat, cv::Mat>(low, high, detected);
+	return detected;
 }

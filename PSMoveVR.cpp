@@ -41,13 +41,13 @@ unsigned char* videoPixels;
 const int width = 640;
 const int height = 480;
 
-ControllerHandler moveR;
-psmoveapi::PSMoveAPI moveRAPI(&moveR);
+ControllerHandler moves("00:06:f7:c9:a1:fb", "00:13:8a:9c:31:42");
+psmoveapi::PSMoveAPI moveAPI(&moves);
 bool controllerLoopRunning = true;
 
 void controllerLoopTask() {
 	while (controllerLoopRunning) {
-		moveRAPI.update();
+		moveAPI.update();
 	}
 }
 
@@ -74,15 +74,20 @@ int main(int argc, char** argv)
 	// PS3 EYE
 	std::vector<ps3eye::PS3EYECam::PS3EYERef> devices = ps3eye::PS3EYECam::getDevices();
 	std::cout << "found " << devices.size() << " PS3 eyes" << std::endl;
-	PS3EYECam::PS3EYERef eye = devices.at(0);
-	eye->init(width, height, 60);
-	eye->setExposure(20);
-	eye->setGain(0);
-	eye->setFlip(true);
-	eye->start();
+	PS3EYECam::PS3EYERef* eyes = new PS3EYECam::PS3EYERef[devices.size()];
+	for (int i = 0; i < devices.size(); i++) {
+		PS3EYECam::PS3EYERef eye = devices.at(i);
+		eye->init(width, height, 60);
+		eye->setExposure(20);
+		eye->setGain(0);
+		eye->setFlip(true);
+		eye->start();
+		eyes[i] = eye;
+	}
 
 	// PS Move
-	moveR.color = { 0.f, 1.f, 1.f };
+	moves.left.color = { 0.f, 1.f, 1.f };
+	moves.right.color = { 1.f, 0.f, 1.f };
 
 	// controller transformations
 	glm::vec3 forwardDir = glm::vec3(0, 0, 1);
@@ -95,20 +100,21 @@ int main(int argc, char** argv)
 	glm::quat q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
 
 	// realtime video
-	videoPixels = new unsigned char[eye->getWidth() * eye->getHeight() * 3];
-	cv::Size videoSize(eye->getWidth(), eye->getHeight());
+	videoPixels = new unsigned char[eyes[0]->getWidth() * eyes[0]->getHeight() * 3];
+	cv::Size videoSize(eyes[0]->getWidth(), eyes[0]->getHeight());
 	ImVec2 videoSizeIV2(width, height);
-	eye->getFrame(videoPixels);
+	eyes[0]->getFrame(videoPixels);
 	cv::Mat camImg(videoSize, CV_8UC3, videoPixels);
 
 	// realtime visualization
 	Shader controllerShader = Shader("shaders/test.vert", "shaders/test.frag");
 	RenderObject controllerGL = RenderObject(&controllerShader);
 	controllerGL.LoadModel("models/psmove.obj");
+	Texture controllerTexture = Texture("textures/psmove.png");
+	Texture controllerDiffuse = Texture("textures/psmove_diff.png");
+	Texture controllerSpecular = Texture("textures/psmove_spec.png");
+
 	ImGuiGL controllerWindow = ImGuiGL(640, 480);
-	Texture controllerTexture = Texture("textures/blue/psmove.png");
-	Texture controllerDiffuse = Texture("textures/blue/psmove_diff.png");
-	Texture controllerSpecular = Texture("textures/blue/psmove_spec.png");
 	glm::mat4 proj = glm::perspective(glm::radians(60.f), 640.f / 480.f, 0.1f, 100.f);
 
 	// realtime video texture
@@ -120,13 +126,9 @@ int main(int argc, char** argv)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	GlCall(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, videoPixels));
 
-	// controller settings window
-	const char* controllerColors[] = { "Blue", "Magenta", "Amber", "Disabled" };
-	int lastControllerColor = 0;
-	int currentColour = 0;
-
 	// calibrate IMU
-	moveR.gyroOffsets = calibrateGyroscope(5000, &moveR, &moveRAPI);
+	moves.right.gyroOffsets = calibrateGyroscope(5000, &moves.right, &moveAPI);
+	moves.left.gyroOffsets = calibrateGyroscope(5000, &moves.left, &moveAPI);
 
 	// imgui
 	IMGUI_CHECKVERSION();
@@ -149,16 +151,18 @@ int main(int argc, char** argv)
 		ImGui::NewFrame();
 
 		// image processing
-		eye->getFrame(videoPixels);
+		eyes[0]->getFrame(videoPixels);
 		camImg.data = videoPixels;
 
-		// controller
-		glm::vec3 accel = moveR.accel;
-		glm::quat sensorQuat = moveR.orientation * q90;
-		glm::quat glSpaceQuat = glm::quat(sensorQuat.w, sensorQuat.x, sensorQuat.z, -sensorQuat.y);
+		// controllers
+		glm::quat sensorQuatL = moves.left.orientation * q90;
+		glm::quat glSpaceQuatL = glm::quat(sensorQuatL.w, sensorQuatL.x, sensorQuatL.z, -sensorQuatL.y);
+
+		glm::quat sensorQuatR = moves.right.orientation * q90;
+		glm::quat glSpaceQuatR = glm::quat(sensorQuatR.w, sensorQuatR.x, sensorQuatR.z, -sensorQuatR.y);
 
 		// camera output
-		ImGui::Begin("Camera output");
+		ImGui::Begin("Camera output ");
 		if (!ImGui::IsWindowCollapsed()) {
 			// image display
 			glBindTexture(GL_TEXTURE_2D, camTexture);
@@ -171,7 +175,7 @@ int main(int argc, char** argv)
 		ImGui::Begin("Visualization");
 
 		GlCall(controllerWindow.Use());
-		glClearColor(1.f, 1.f, 1.f, 1.f);
+		glClearColor(0.447f, 0.565f, 0.604f, 1.f);
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -179,62 +183,40 @@ int main(int argc, char** argv)
 		controllerTexture.Use(GL_TEXTURE1);
 		controllerSpecular.Use(GL_TEXTURE2);
 		controllerDiffuse.Use(GL_TEXTURE3);
-		glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuat);
-		controllerShader.SetMatrix4("transform", transformMatrix);
 		controllerShader.SetMatrix4("projection", proj);
 		controllerShader.SetInt("texture0", 1);
 		controllerShader.SetInt("textureSpec", 2);
 		controllerShader.SetInt("textureDiff", 3);
+
+		// first pass
+		glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
+		controllerShader.SetMatrix4("transform", transformMatrix);
+		controllerShader.SetVector4("translate", glm::vec4(-0.2f, 0.f, 0.f, 0.f));
+		controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
+		GlCall(controllerGL.Draw());
+
+		// second pass
+		transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
+		controllerShader.SetMatrix4("transform", transformMatrix);
+		controllerShader.SetVector4("translate", glm::vec4(0.2f, 0.f, 0.f, 0.f));
+		controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
 		GlCall(controllerGL.Draw());
 
 		controllerWindow.Deuse();
 		glDisable(GL_DEPTH_TEST);
-		glClearColor(0.f, 0.7f, 1.f, 1.f);
+		glClearColor(0.647f, 0.765f, 0.804f, 1.f);
 		controllerWindow.UseTexture();
 		ImGui::Image((void*)(intptr_t)controllerWindow.tex, videoSizeIV2, ImVec2(0, 1), ImVec2(1, 0));
 		ImGui::End();
 		
 		// controller settings
 		ImGui::Begin("Controller");
-		ImGui::Combo("Controller color", &currentColour, controllerColors, IM_ARRAYSIZE(controllerColors));
-		if (currentColour != lastControllerColor) {
-			switch (currentColour)
-			{
-			case 0:
-				controllerTexture.Reload("textures/blue/psmove.png");
-				controllerDiffuse.Reload("textures/blue/psmove_diff.png");
-				controllerSpecular.Reload("textures/blue/psmove_spec.png");
-				moveR.color = { 0.f, 1.f, 1.f };
-				break;
-			case 1:
-				controllerTexture.Reload("textures/magenta/psmove.png");
-				controllerDiffuse.Reload("textures/magenta/psmove_diff.png");
-				controllerSpecular.Reload("textures/magenta/psmove_spec.png");
-				moveR.color = { 1.f, 0.f, 1.f };
-				break;
-			case 2:
-				controllerTexture.Reload("textures/amber/psmove.png");
-				controllerDiffuse.Reload("textures/amber/psmove_diff.png");
-				controllerSpecular.Reload("textures/amber/psmove_spec.png");
-				moveR.color = { 1.f, 1.f, 0.f };
-				break;
-			case 3:
-				controllerTexture.Reload("textures/disabled/psmove.png");
-				controllerDiffuse.Reload("textures/disabled/psmove_diff.png");
-				controllerSpecular.Reload("textures/disabled/psmove_spec.png");
-				moveR.color = { 0.f, 0.f, 0.f };
-				break;
-			default:
-				break;
-			}
-		}
-		ImGui::Text("Ax->%.3f", accel.x);
-		ImGui::Text("Ay->%.3f", accel.y);
-		ImGui::Text("Az->%.3f", accel.z);
-		ImGui::Text("Gx->%.3f", moveR.gyro.x - moveR.gyroOffsets.x);
-		ImGui::Text("Gy->%.3f", moveR.gyro.y - moveR.gyroOffsets.y);
-		ImGui::Text("Gz->%.3f", moveR.gyro.z - moveR.gyroOffsets.z);
-		lastControllerColor = currentColour;
+		ImGui::Text("Ax->%.3f", moves.right.accel.x);
+		ImGui::Text("Ay->%.3f", moves.right.accel.y);
+		ImGui::Text("Az->%.3f", moves.right.accel.z);
+		ImGui::Text("Gx->%.3f", moves.right.gyro.x - moves.right.gyroOffsets.x);
+		ImGui::Text("Gy->%.3f", moves.right.gyro.y - moves.right.gyroOffsets.y);
+		ImGui::Text("Gz->%.3f", moves.right.gyro.z - moves.right.gyroOffsets.z);
 		ImGui::End();
 
 		// diagnostics
@@ -251,7 +233,8 @@ int main(int argc, char** argv)
 
 	controllerLoopRunning = false;
 	controllerTask.join();
-	eye->stop();
+	for (int i = 0; i < devices.size(); i++)
+		eyes[i]->stop();
 	glDeleteTextures(1, &camTexture);
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <glad/glad.h>
+
 class RenderObject
 {
 public:

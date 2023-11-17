@@ -79,6 +79,18 @@ void Shader::Use() {
 	glUseProgram(handle);
 }
 
+void Shader::SetVector4(const char* name, glm::vec4 value) {
+	int location = glGetUniformLocation(handle, name);
+
+	glUniform4fv(location, 1, glm::value_ptr(value));
+}
+
+void Shader::SetVector3(const char* name, glm::vec3 value) {
+	int location = glGetUniformLocation(handle, name);
+
+	glUniform3fv(location, 1, glm::value_ptr(value));
+}
+
 void Shader::SetMatrix4(const char* name, glm::mat4 value) {
 	int location = glGetUniformLocation(handle, name);
 

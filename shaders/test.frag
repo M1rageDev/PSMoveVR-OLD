@@ -10,6 +10,7 @@ out vec4 FragColor;
 uniform sampler2D texture0;
 uniform sampler2D textureDiff;
 uniform sampler2D textureSpec;
+uniform vec3 bulbColor;
 uniform vec3 viewPos;
 
 void main()
@@ -23,12 +24,12 @@ void main()
 	vec3 halfwayDir = normalize(lightDir + viewDir);
     float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
 	
+	float diffTex = texture2D(textureDiff, TexCoord).r;
+	
 	vec3 ambient = texture2D(texture0, TexCoord).xyz * vec3(0.5);
-	vec3 diffuse = vec3(1.0);
-	if (texture2D(textureDiff, TexCoord).r == 0.0) {
-		diffuse = texture2D(texture0, TexCoord).xyz;
-	} else {
-		diffuse = texture2D(texture0, TexCoord).xyz * diff;
+	vec3 diffuse = texture2D(texture0, TexCoord).xyz * (diffTex * diff);
+	if (diffTex == 0) {
+		diffuse = bulbColor;
 	}
 	vec3 specular = texture2D(textureSpec, TexCoord).xyz * spec;
 

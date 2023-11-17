@@ -4,7 +4,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
 
-glm::vec3 calibrateGyroscope(unsigned int samples, ControllerHandler* getGyro, psmoveapi::PSMoveAPI* api) {
+glm::vec3 calibrateGyroscope(unsigned int samples, ControllerStructure* getGyro, psmoveapi::PSMoveAPI* api) {
 	std::cout << "Starting gyro calibration, make sure the controller is standing COMPLETELY still." << std::endl;
 	std::vector<glm::vec3> imuArray;
 	glm::vec3 gyroOffsets{ 0.0, 0.0, 0.0 };
