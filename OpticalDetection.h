@@ -13,10 +13,17 @@
 
 #include "VRMath.h"
 
-cv::Scalar OPTICAL_COLOR_L;
-cv::Scalar OPTICAL_COLOR_H;
+const float REAL_BALL_RADIUS = 2.25f;	
+const cv::Mat OBJECT_POINTS = cv::Mat(1, 4, CV_64F, 
+	new cv::Point2f[4] { 
+		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS),
+		cv::Point2f(REAL_BALL_RADIUS, REAL_BALL_RADIUS),
+		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS),
+		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS)
+	}
+);
 
-glm::vec3 detectBall(cv::Mat frame) {
+glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 	cv::Mat hsvFrame;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
@@ -24,7 +31,7 @@ glm::vec3 detectBall(cv::Mat frame) {
 	cv::Mat mask;
 	cv::Mat eroded;
 	cv::Mat inRange;
-	cv::inRange(hsvFrame, OPTICAL_COLOR_L, OPTICAL_COLOR_H, inRange);
+	cv::inRange(hsvFrame, low, high, inRange);
 	cv::erode(inRange, eroded, cv::Mat(), minus1Point, 2);
 	cv::dilate(eroded, mask, cv::Mat(), minus1Point, 2);
 	
@@ -49,7 +56,7 @@ glm::vec3 detectBall(cv::Mat frame) {
 	}
 }
 
-cv::Mat calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
+std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
 	cv::Mat hsvFrame, detected;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
@@ -60,9 +67,29 @@ cv::Mat calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter
 	float vMin = vrmath::clamp(vCenter - vRange, 0.f, 255.f);
 	float vMax = vrmath::clamp(vCenter + vRange, 0.f, 255.f);
 
-	OPTICAL_COLOR_L = cv::Scalar(hMin, sMin, vMin);
-	OPTICAL_COLOR_H = cv::Scalar(hMax, sMax, vMax);
-	cv::inRange(hsvFrame, OPTICAL_COLOR_L, OPTICAL_COLOR_H, detected);
+	cv::Scalar low = cv::Scalar(hMin, sMin, vMin);
+	cv::Scalar high = cv::Scalar(hMax, sMax, vMax);
+	cv::inRange(hsvFrame, low, high, detected);
 
-	return detected;
+	return { detected, low, high };
+}
+
+std::tuple<bool, cv::Mat, cv::Mat> estimate3D(glm::vec3 ball, cv::Mat matrix, cv::Mat distortion) {
+	cv::Mat imagePoints = cv::Mat(1, 4, CV_64F,
+		new cv::Point2f[4]{ 
+			cv::Point2f(ball.x - ball.z, ball.y - ball.z),
+			cv::Point2f(ball.x + ball.z, ball.y + ball.z),
+			cv::Point2f(ball.x - ball.z, ball.y + ball.z),
+			cv::Point2f(ball.x + ball.z, ball.y - ball.z)
+		}
+	);
+
+	cv::Mat tvec;
+	cv::Mat rvec;
+	bool ret = cv::solvePnP(OBJECT_POINTS, imagePoints, matrix, distortion, rvec, tvec);
+	return {ret, rvec, tvec};
+}
+
+void drawController(cv::Mat frame, glm::vec3 ball, cv::Scalar color) {
+	cv::circle(frame, cv::Point2f(ball.x, ball.y), ball.z, color, 2);
 }
