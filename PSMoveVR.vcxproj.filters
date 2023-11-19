@@ -152,5 +152,8 @@
     <ClInclude Include="VRMath.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="VRConfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

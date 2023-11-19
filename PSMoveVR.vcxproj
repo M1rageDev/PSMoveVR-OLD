@@ -71,8 +71,8 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>E:\Programowanie\Projekty\C++\PSMoveVR\include;C:\opencv\opencv\build\include;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\opencv\opencv\build\x64\vc16\bin;opencv_world480d.lib;C:\opencv\opencv\build\x64\vc16\lib;E:\Programowanie\Projekty\C++\PSMoveVR\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>E:\Programowanie\Projekty\C++\PSMoveVR\include;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\Programowanie\Projekty\C++\PSMoveVR\lib;$(LibraryPath)</LibraryPath>
     <SourcePath>E:\Programowanie\Projekty\C++\PSMoveVR\include\glad;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9\backends;E:\Programowanie\Projekty\C++\PSMoveVR\include\PS3EYEDriver\src;E:\Programowanie\Projekty\C++\PSMoveVR\include\imgui-1.89.9;E:\Programowanie\Projekty\C++\PSMoveVR\include;$(SourcePath)</SourcePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -109,12 +109,13 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>opencv_world480d.lib;lib/glfw/glfw3.lib;opengl32.lib;lib/psmoveapi/psmoveapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\opencv\opencv\build\x64\vc16\lib;E:\Programowanie\Projekty\C++\PSMoveVR\glfw\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>lib/glfw/glfw3.lib;opengl32.lib;lib/psmoveapi/psmoveapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\Programowanie\Projekty\C++\PSMoveVR\glfw\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -180,6 +181,7 @@
     <ClInclude Include="Shader.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="Texture.h" />
+    <ClInclude Include="VRConfig.h" />
     <ClInclude Include="VRMath.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

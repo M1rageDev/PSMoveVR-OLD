@@ -5,6 +5,8 @@
 #include "MagwickAHRS.h"
 #include "psmoveapi/psmoveapi.h"
 
+const glm::quat MOVE_Q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
+
 struct ControllerStructure {
 	MadgwickAHRS ahrs = MadgwickAHRS(glm::quat(0.7071069f, 0.7071067f, 0.f, 0.f));
 	RGB color = { 0.f, 0.f, 0.f };
@@ -27,7 +29,7 @@ struct ControllerStructure {
 		accel = glm::vec3(controller->accelerometer.x, controller->accelerometer.y, controller->accelerometer.z);
 		gyro = glm::vec3(controller->gyroscope.x, controller->gyroscope.y, controller->gyroscope.z);
 		ahrs.update(gyro - gyroOffsets, accel, mBeta, timestep);
-		orientation = ahrs.q;
+		orientation = ahrs.q * MOVE_Q90;
 
 		controller->color = color;
 		controller->rumble = rumble;
@@ -55,7 +57,16 @@ struct ControllerHandler : public psmoveapi::Handler {
 	}
 
 	virtual void connect(Controller* controller) {
-		printf("%s controller connected: %s\n", (strcmp(controller->serial, rightSerial) ? "Right" : "Left"), controller->serial);
+		const char* handeness;
+		if (strcmp(controller->serial, rightSerial)) {
+			rightConnected = true;
+			handeness = "Right";
+		}
+		else {
+			leftConnected = true;
+			handeness = "Left";
+		}
+		printf("%s controller connected: %s\n", handeness, controller->serial);
 	}
 
 	virtual void update(Controller* controller) {
@@ -69,7 +80,16 @@ struct ControllerHandler : public psmoveapi::Handler {
 	}
 
 	virtual void disconnect(Controller* controller) {
-		printf("%s controller disconnected: %s\n", (strcmp(controller->serial, rightSerial) ? "Right" : "Left"), controller->serial);
+		const char* handeness;
+		if (strcmp(controller->serial, rightSerial)) {
+			rightConnected = false;
+			handeness = "Right";
+		}
+		else {
+			leftConnected = false;
+			handeness = "Left";
+		}
+		printf("%s controller disconnected: %s\n", handeness, controller->serial);
 	}
 
 	glm::vec3 getGyro(bool leftFunction) {
@@ -94,6 +114,8 @@ struct ControllerHandler : public psmoveapi::Handler {
 
 	ControllerStructure left;
 	const char* leftSerial;
+	bool leftConnected;
 	ControllerStructure right;
 	const char* rightSerial;
+	bool rightConnected;
 };

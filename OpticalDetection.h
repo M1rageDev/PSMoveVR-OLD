@@ -36,13 +36,13 @@ glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 	cv::dilate(eroded, mask, cv::Mat(), minus1Point, 2);
 	
 	std::vector<std::vector<cv::Point>> contours;
-	cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+	cv::findContours(mask.clone(), contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
 
 	if (!contours.empty()) {
 		float maxArea = 0;
 		int maxIndex = 0;
 		for (int i = 0; i < contours.size(); ++i) {
-			float area = cv::contourArea(contours[i]);
+			float area = cv::contourArea(contours.at(i));
 			if (area > maxArea) {
 				maxArea = area;
 				maxIndex = i;
@@ -52,6 +52,7 @@ glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 		cv::Point2f center;
 		float radius;
 		cv::minEnclosingCircle(contours[maxIndex], center, radius);
+		
 		return glm::vec3(center.x, center.y, radius);
 	}
 }
@@ -90,6 +91,39 @@ std::tuple<bool, cv::Mat, cv::Mat> estimate3D(glm::vec3 ball, cv::Mat matrix, cv
 	return {ret, rvec, tvec};
 }
 
-void drawController(cv::Mat frame, glm::vec3 ball, cv::Scalar color) {
-	cv::circle(frame, cv::Point2f(ball.x, ball.y), ball.z, color, 2);
+namespace opticalMethods {
+	const cv::Scalar COLOR_LEFT_LOW;
+	const cv::Scalar COLOR_LEFT_HIGH;
+	const cv::Scalar COLOR_RIGHT_LOW;
+	const cv::Scalar COLOR_RIGHT_HIGH;
+
+	const cv::Mat CAMERA_MAT;
+	const cv::Mat CAMERA_DIST;
+
+	ControllerHandler* moves;
+
+	glm::vec3 right3D;
+	glm::vec3 left3D;
+	glm::vec3 lastRight3D;
+	glm::vec3 lastLeft3D;
+
+	glm::vec3 processController(cv::Mat frame, bool left) {
+		cv::Scalar colorLow = left ? COLOR_LEFT_LOW : COLOR_RIGHT_LOW;
+		cv::Scalar colorHigh = left ? COLOR_LEFT_HIGH : COLOR_RIGHT_HIGH;
+
+		glm::vec3 ball = detectBall(frame, colorLow, colorHigh);
+		auto [ret, rvec, tvec] = estimate3D(ball, CAMERA_MAT, CAMERA_DIST);
+		if (ret) {
+			//right3D = glm::vec3(tvec.at(), tvec[1], tvec[2]);
+		}
+	}
+
+	void calibrate(ControllerHandler* controllers) {
+		moves = controllers;
+	}
+
+	void loop(cv::Mat frame) {
+		processController(frame, false);
+		processController(frame, true);
+	}
 }

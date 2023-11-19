@@ -19,6 +19,7 @@
 #include "ControllerHandler.h"
 #include "IMUCalibration.h"
 #include "RenderObject.h"
+#include "OpticalDetection.h"
 #include "ImGuiGL.h"
 #include "Texture.h"
 #include "Macros.h"
@@ -40,14 +41,34 @@ GLuint camTexture;
 unsigned char* videoPixels;
 const int width = 640;
 const int height = 480;
+ImVec2 videoSize(width, height);
 
 ControllerHandler moves("00:06:f7:c9:a1:fb", "00:13:8a:9c:31:42");
 psmoveapi::PSMoveAPI moveAPI(&moves);
 bool controllerLoopRunning = true;
 
+float opticalTimestep = 0.f;
+float opticalLastTick = 0.f;
+
+cv::Scalar colorLow = cv::Scalar(95, 0, 92);
+cv::Scalar colorHigh = cv::Scalar(229, 169, 255);
+
 void controllerLoopTask() {
 	while (controllerLoopRunning) {
 		moveAPI.update();
+	}
+}
+
+void opticalTask(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
+	while (controllerLoopRunning) {
+		float curTime = clock();
+		opticalTimestep = curTime - opticalLastTick;
+		opticalLastTick = curTime;
+
+		eyes[0]->getFrame(videoPixels);
+		img.data = videoPixels;
+
+		opticalMethods::loop(img);
 	}
 }
 
@@ -72,7 +93,7 @@ int main(int argc, char** argv)
 	gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 
 	// PS3 EYE
-	std::vector<ps3eye::PS3EYECam::PS3EYERef> devices = ps3eye::PS3EYECam::getDevices();
+	std::vector<PS3EYECam::PS3EYERef> devices = PS3EYECam::getDevices();
 	std::cout << "found " << devices.size() << " PS3 eyes" << std::endl;
 	PS3EYECam::PS3EYERef* eyes = new PS3EYECam::PS3EYERef[devices.size()];
 	for (int i = 0; i < devices.size(); i++) {
@@ -100,11 +121,9 @@ int main(int argc, char** argv)
 	glm::quat q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
 
 	// realtime video
-	videoPixels = new unsigned char[eyes[0]->getWidth() * eyes[0]->getHeight() * 3];
-	cv::Size videoSize(eyes[0]->getWidth(), eyes[0]->getHeight());
-	ImVec2 videoSizeIV2(width, height);
+	videoPixels = new unsigned char[width * height * 3];
 	eyes[0]->getFrame(videoPixels);
-	cv::Mat camImg(videoSize, CV_8UC3, videoPixels);
+	cv::Mat camImg(width, height, CV_8UC3, videoPixels);
 
 	// realtime visualization
 	Shader controllerShader = Shader("shaders/test.vert", "shaders/test.frag");
@@ -139,7 +158,8 @@ int main(int argc, char** argv)
 	ImGui_ImplOpenGL3_Init();
 
 	// tasks
-	std::thread controllerTask(controllerLoopTask);
+	std::thread controllerTaskThread(controllerLoopTask);
+	std::thread opticalTaskThread(opticalTask, eyes, camImg);
 
 	// main loop
 	while (!glfwWindowShouldClose(window))
@@ -150,15 +170,11 @@ int main(int argc, char** argv)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		// image processing
-		eyes[0]->getFrame(videoPixels);
-		camImg.data = videoPixels;
-
 		// controllers
-		glm::quat sensorQuatL = moves.left.orientation * q90;
+		glm::quat sensorQuatL = moves.left.orientation;
 		glm::quat glSpaceQuatL = glm::quat(sensorQuatL.w, sensorQuatL.x, sensorQuatL.z, -sensorQuatL.y);
 
-		glm::quat sensorQuatR = moves.right.orientation * q90;
+		glm::quat sensorQuatR = moves.right.orientation;
 		glm::quat glSpaceQuatR = glm::quat(sensorQuatR.w, sensorQuatR.x, sensorQuatR.z, -sensorQuatR.y);
 
 		// camera output
@@ -167,7 +183,7 @@ int main(int argc, char** argv)
 			// image display
 			glBindTexture(GL_TEXTURE_2D, camTexture);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, camImg.ptr());
-			ImGui::Image((void*)(intptr_t)camTexture, videoSizeIV2);
+			ImGui::Image((void*)(intptr_t)camTexture, videoSize);
 		}
 		ImGui::End();
 
@@ -206,22 +222,15 @@ int main(int argc, char** argv)
 		glDisable(GL_DEPTH_TEST);
 		glClearColor(0.647f, 0.765f, 0.804f, 1.f);
 		controllerWindow.UseTexture();
-		ImGui::Image((void*)(intptr_t)controllerWindow.tex, videoSizeIV2, ImVec2(0, 1), ImVec2(1, 0));
-		ImGui::End();
-		
-		// controller settings
-		ImGui::Begin("Controller");
-		ImGui::Text("Ax->%.3f", moves.right.accel.x);
-		ImGui::Text("Ay->%.3f", moves.right.accel.y);
-		ImGui::Text("Az->%.3f", moves.right.accel.z);
-		ImGui::Text("Gx->%.3f", moves.right.gyro.x - moves.right.gyroOffsets.x);
-		ImGui::Text("Gy->%.3f", moves.right.gyro.y - moves.right.gyroOffsets.y);
-		ImGui::Text("Gz->%.3f", moves.right.gyro.z - moves.right.gyroOffsets.z);
+		ImGui::Image((void*)(intptr_t)controllerWindow.tex, videoSize, ImVec2(0, 1), ImVec2(1, 0));
 		ImGui::End();
 
 		// diagnostics
 		ImGui::Begin("Diagnostics");
-		ImGui::Text("Running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
+		if (moves.leftConnected) ImGui::Text("Left AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
+		if (moves.rightConnected) ImGui::Text("Right AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.right.timestep * 1000.f, 1.f / moves.right.timestep);
 		ImGui::End();
 
 		//render
@@ -232,7 +241,8 @@ int main(int argc, char** argv)
 	}
 
 	controllerLoopRunning = false;
-	controllerTask.join();
+	controllerTaskThread.join();
+	opticalTaskThread.join();
 	for (int i = 0; i < devices.size(); i++)
 		eyes[i]->stop();
 	glDeleteTextures(1, &camTexture);
