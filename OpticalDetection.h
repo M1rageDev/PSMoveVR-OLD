@@ -115,6 +115,7 @@ namespace opticalMethods {
 		auto [ret, rvec, tvec] = estimate3D(ball, CAMERA_MAT, CAMERA_DIST);
 		if (ret) {
 			//right3D = glm::vec3(tvec.at(), tvec[1], tvec[2]);
+			return glm::vec3();
 		}
 	}
 
