@@ -32,6 +32,8 @@
 #include <stdio.h>
 #include <filesystem>
 #include <iostream> 
+#include <chrono>
+#include <format>
 
 using namespace ps3eye;
 
@@ -157,6 +159,9 @@ int main(int argc, char** argv)
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init();
 
+	// optical calibration
+	opticalMethods::calibrate(&moves);
+
 	// tasks
 	std::thread controllerTaskThread(controllerLoopTask);
 	std::thread opticalTaskThread(opticalTask, eyes, camImg);
@@ -204,14 +209,14 @@ int main(int argc, char** argv)
 		controllerShader.SetInt("textureSpec", 2);
 		controllerShader.SetInt("textureDiff", 3);
 
-		// first pass
+		// left pass
 		glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
 		controllerShader.SetMatrix4("transform", transformMatrix);
 		controllerShader.SetVector4("translate", glm::vec4(-0.2f, 0.f, 0.f, 0.f));
 		controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
 		GlCall(controllerGL.Draw());
 
-		// second pass
+		// right pass
 		transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
 		controllerShader.SetMatrix4("transform", transformMatrix);
 		controllerShader.SetVector4("translate", glm::vec4(0.2f, 0.f, 0.f, 0.f));

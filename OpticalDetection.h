@@ -12,9 +12,10 @@
 #include <glm/glm.hpp>
 
 #include "VRMath.h"
+#include "VRConfig.h"
 
 const float REAL_BALL_RADIUS = 2.25f;	
-const cv::Mat OBJECT_POINTS = cv::Mat(1, 4, CV_64F, 
+const cv::Mat OBJECT_POINTS = cv::Mat(1, 4, CV_32F, 
 	new cv::Point2f[4] { 
 		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS),
 		cv::Point2f(REAL_BALL_RADIUS, REAL_BALL_RADIUS),
@@ -22,6 +23,28 @@ const cv::Mat OBJECT_POINTS = cv::Mat(1, 4, CV_64F,
 		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS)
 	}
 );
+
+std::tuple<cv::Mat, cv::Mat> calibrateCamera(const char* filePath) {
+
+}
+
+std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
+	cv::Mat hsvFrame, detected;
+	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
+
+	float hMin = hCenter - hRange;
+	float hMax = hCenter + hRange;
+	float sMin = (sCenter - sRange, 0.f, 255.f);
+	float sMax = vrmath::clamp(sCenter + sRange, 0.f, 255.f);
+	float vMin = vrmath::clamp(vCenter - vRange, 0.f, 255.f);
+	float vMax = vrmath::clamp(vCenter + vRange, 0.f, 255.f);
+
+	cv::Scalar low = cv::Scalar(hMin, sMin, vMin);
+	cv::Scalar high = cv::Scalar(hMax, sMax, vMax);
+	cv::inRange(hsvFrame, low, high, detected);
+
+	return { detected, low, high };
+}
 
 glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 	cv::Mat hsvFrame;
@@ -57,24 +80,6 @@ glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 	}
 }
 
-std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
-	cv::Mat hsvFrame, detected;
-	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
-
-	float hMin = hCenter - hRange;
-	float hMax = hCenter + hRange;
-	float sMin = (sCenter - sRange, 0.f, 255.f);
-	float sMax = vrmath::clamp(sCenter + sRange, 0.f, 255.f);
-	float vMin = vrmath::clamp(vCenter - vRange, 0.f, 255.f);
-	float vMax = vrmath::clamp(vCenter + vRange, 0.f, 255.f);
-
-	cv::Scalar low = cv::Scalar(hMin, sMin, vMin);
-	cv::Scalar high = cv::Scalar(hMax, sMax, vMax);
-	cv::inRange(hsvFrame, low, high, detected);
-
-	return { detected, low, high };
-}
-
 std::tuple<bool, cv::Mat, cv::Mat> estimate3D(glm::vec3 ball, cv::Mat matrix, cv::Mat distortion) {
 	cv::Mat imagePoints = cv::Mat(1, 4, CV_64F,
 		new cv::Point2f[4]{ 
@@ -92,13 +97,13 @@ std::tuple<bool, cv::Mat, cv::Mat> estimate3D(glm::vec3 ball, cv::Mat matrix, cv
 }
 
 namespace opticalMethods {
-	const cv::Scalar COLOR_LEFT_LOW;
-	const cv::Scalar COLOR_LEFT_HIGH;
-	const cv::Scalar COLOR_RIGHT_LOW;
-	const cv::Scalar COLOR_RIGHT_HIGH;
+	cv::Scalar COLOR_LEFT_LOW;
+	cv::Scalar COLOR_LEFT_HIGH;
+	cv::Scalar COLOR_RIGHT_LOW;
+	cv::Scalar COLOR_RIGHT_HIGH;
 
-	const cv::Mat CAMERA_MAT;
-	const cv::Mat CAMERA_DIST;
+	cv::Mat CAMERA_MAT;
+	cv::Mat CAMERA_DIST;
 
 	ControllerHandler* moves;
 
@@ -107,20 +112,50 @@ namespace opticalMethods {
 	glm::vec3 lastRight3D;
 	glm::vec3 lastLeft3D;
 
-	glm::vec3 processController(cv::Mat frame, bool left) {
+	std::tuple<bool, glm::vec3> processController(cv::Mat frame, bool left) {
 		cv::Scalar colorLow = left ? COLOR_LEFT_LOW : COLOR_RIGHT_LOW;
 		cv::Scalar colorHigh = left ? COLOR_LEFT_HIGH : COLOR_RIGHT_HIGH;
 
 		glm::vec3 ball = detectBall(frame, colorLow, colorHigh);
+		if (!(ball.z > 0)) return { false, glm::vec3() };
+
 		auto [ret, rvec, tvec] = estimate3D(ball, CAMERA_MAT, CAMERA_DIST);
 		if (ret) {
-			//right3D = glm::vec3(tvec.at(), tvec[1], tvec[2]);
-			return glm::vec3();
+			glm::vec3 cameraSpace = glm::vec3(tvec.at<float>(cv::Point(0, 0)), tvec.at<float>(cv::Point(1, 0)), tvec.at<float>(cv::Point(2, 0)));
+			std::cout << cameraSpace.x << std::endl;
+			return { true, cameraSpace };
+		}
+		else {
+			return { false, glm::vec3() };
 		}
 	}
 
 	void calibrate(ControllerHandler* controllers) {
 		moves = controllers;
+
+		// color
+		if (!fileExists("config/color.yml")) {
+
+		}
+		else {
+			beginRead("config/color.yml");
+			COLOR_LEFT_LOW = readNodeScalar("leftLow");
+			COLOR_LEFT_HIGH = readNodeScalar("leftHigh");
+			COLOR_RIGHT_LOW = readNodeScalar("rightLow");
+			COLOR_RIGHT_HIGH = readNodeScalar("rightHigh");
+			endRead();
+		}
+
+		// camera
+		if (!fileExists("config/camera.yml")) {
+
+		}
+		else {
+			beginRead("config/camera.yml");
+			CAMERA_MAT = readNodeScalar("matrix");
+			CAMERA_DIST = readNodeScalar("distortion");
+			endRead();
+		}
 	}
 
 	void loop(cv::Mat frame) {
