@@ -11,30 +11,74 @@
 #include <glm/vec3.hpp>
 #include <glm/glm.hpp>
 
+#include "PS3EYEDriver/src/ps3eye.h"
+
 #include "VRMath.h"
 #include "VRConfig.h"
 
+using namespace ps3eye;
+
 const float REAL_BALL_RADIUS = 2.25f;	
-const cv::Mat OBJECT_POINTS = cv::Mat(1, 4, CV_32F, 
-	new cv::Point2f[4] { 
-		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS),
-		cv::Point2f(REAL_BALL_RADIUS, REAL_BALL_RADIUS),
-		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS),
-		cv::Point2f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS)
+std::vector<cv::Point3f> OBJECT_POINTS = {
+	cv::Point3f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS, 0.f),
+	cv::Point3f(REAL_BALL_RADIUS, REAL_BALL_RADIUS,  0.f),
+	cv::Point3f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS,  0.f),
+	cv::Point3f(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS,  0.f) };
+
+std::tuple<bool, cv::Mat, cv::Mat> calibrateCamera(cv::Mat* images, int imageLen, float squareSize) {
+	cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER, 30, 0.001);
+
+	// generate object points for a single chessboard
+	std::vector<cv::Point3f> objectPoints_single;
+	for (int y = 0; y < 7; y++) {
+		for (int x = 0; x < 7; x++) {
+			objectPoints_single.push_back(cv::Point3f((float)(x * squareSize), (float)(y * squareSize), 0.f));
+		}
 	}
-);
 
-std::tuple<cv::Mat, cv::Mat> calibrateCamera(const char* filePath) {
+	// add image and object points
+	std::vector<std::vector<cv::Point3f>> objectPoints;
+	std::vector<std::vector<cv::Point2f>> imagePoints;
+	for (int i = 0; i < imageLen; i++) {
+		cv::Mat gray;
+		cv::cvtColor(images[i], gray, cv::COLOR_BGR2GRAY);
 
+		cv::Mat corners;
+		bool ret = cv::findChessboardCorners(gray, cv::Size(7, 7), corners, cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_FAST_CHECK | cv::CALIB_CB_NORMALIZE_IMAGE);
+		if (ret) {
+			objectPoints.push_back(objectPoints_single);
+			cv::Mat corners2;
+			cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), criteria);
+			imagePoints.push_back(corners2);
+			std::cout << "Added one" << std::endl;
+		}
+
+		cv::imshow("egger", images[i]);
+		cv::waitKey(10);
+	}
+
+	// calibrate
+	if (objectPoints.size() > 0) {
+		cv::Mat camMatrix, camDist;
+		std::vector<cv::Mat> rvecs, tvecs;
+		cv::Size imgSize = cv::Size(images[0].size().width, images[0].size().height);
+		double ret = cv::calibrateCamera(objectPoints, imagePoints, imgSize, camMatrix, camDist, rvecs, tvecs);
+		std::cout << "Successfully calibrated camera." << std::endl;
+		return { true, camMatrix, camDist };
+	}
+	else {
+		std::cout << "Could not calibrate camera: no points captured.";
+		return { true, cv::Mat(), cv::Mat() };
+	}
 }
 
-std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange, bool finished) {
+std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange) {
 	cv::Mat hsvFrame, detected;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
 
 	float hMin = hCenter - hRange;
 	float hMax = hCenter + hRange;
-	float sMin = (sCenter - sRange, 0.f, 255.f);
+	float sMin = vrmath::clamp(sCenter - sRange, 0.f, 255.f);
 	float sMax = vrmath::clamp(sCenter + sRange, 0.f, 255.f);
 	float vMin = vrmath::clamp(vCenter - vRange, 0.f, 255.f);
 	float vMax = vrmath::clamp(vCenter + vRange, 0.f, 255.f);
@@ -81,18 +125,16 @@ glm::vec3 detectBall(cv::Mat frame, cv::Scalar low, cv::Scalar high) {
 }
 
 std::tuple<bool, cv::Mat, cv::Mat> estimate3D(glm::vec3 ball, cv::Mat matrix, cv::Mat distortion) {
-	cv::Mat imagePoints = cv::Mat(1, 4, CV_64F,
-		new cv::Point2f[4]{ 
-			cv::Point2f(ball.x - ball.z, ball.y - ball.z),
-			cv::Point2f(ball.x + ball.z, ball.y + ball.z),
-			cv::Point2f(ball.x - ball.z, ball.y + ball.z),
-			cv::Point2f(ball.x + ball.z, ball.y - ball.z)
-		}
-	);
+	std::vector<cv::Point2f> imagePoints = {
+		cv::Point2f(ball.x - ball.z, ball.y - ball.z),
+		cv::Point2f(ball.x + ball.z, ball.y + ball.z),
+		cv::Point2f(ball.x - ball.z, ball.y + ball.z),
+		cv::Point2f(ball.x + ball.z, ball.y - ball.z)
+	};
 
 	cv::Mat tvec;
 	cv::Mat rvec;
-	bool ret = cv::solvePnP(OBJECT_POINTS, imagePoints, matrix, distortion, rvec, tvec);
+	bool ret = true;//cv::solvePnP(OBJECT_POINTS, imagePoints, matrix, distortion, rvec, tvec);
 	return {ret, rvec, tvec};
 }
 
@@ -106,6 +148,7 @@ namespace opticalMethods {
 	cv::Mat CAMERA_DIST;
 
 	ControllerHandler* moves;
+	PS3EYECam::PS3EYERef cam;
 
 	glm::vec3 right3D;
 	glm::vec3 left3D;
@@ -117,7 +160,8 @@ namespace opticalMethods {
 		cv::Scalar colorHigh = left ? COLOR_LEFT_HIGH : COLOR_RIGHT_HIGH;
 
 		glm::vec3 ball = detectBall(frame, colorLow, colorHigh);
-		if (!(ball.z > 0)) return { false, glm::vec3() };
+		if (ball.z <= 0) return { false, glm::vec3() };
+		std::cout << ball.z << std::endl;
 
 		auto [ret, rvec, tvec] = estimate3D(ball, CAMERA_MAT, CAMERA_DIST);
 		if (ret) {
@@ -130,36 +174,50 @@ namespace opticalMethods {
 		}
 	}
 
-	void calibrate(ControllerHandler* controllers) {
+	void init(ControllerHandler* controllers, PS3EYECam::PS3EYERef eye) {
 		moves = controllers;
+		cam = eye;
 
-		// color
-		if (!fileExists("config/color.yml")) {
-
+		// camera
+		if (fileExists("config/camera.yml")) {
+			beginRead("config/camera.yml");
+			CAMERA_MAT = readNodeScalar("matrix");
+			CAMERA_DIST = readNodeScalar("distortion");
+			endRead();
+			std::cout << "Loaded camera intristic and distortion matrix." << std::endl;
 		}
-		else {
+
+		if (fileExists("config/color.yml")) {
 			beginRead("config/color.yml");
 			COLOR_LEFT_LOW = readNodeScalar("leftLow");
 			COLOR_LEFT_HIGH = readNodeScalar("leftHigh");
 			COLOR_RIGHT_LOW = readNodeScalar("rightLow");
 			COLOR_RIGHT_HIGH = readNodeScalar("rightHigh");
 			endRead();
-		}
-
-		// camera
-		if (!fileExists("config/camera.yml")) {
-
-		}
-		else {
-			beginRead("config/camera.yml");
-			CAMERA_MAT = readNodeScalar("matrix");
-			CAMERA_DIST = readNodeScalar("distortion");
-			endRead();
+			std::cout << "Loaded color calibration data." << std::endl;
 		}
 	}
 
+	void saveColor() {
+		beginSave("config/color.yml");
+		addNode("leftLow", COLOR_LEFT_LOW);
+		addNode("leftHigh", COLOR_LEFT_HIGH);
+		addNode("rightLow", COLOR_RIGHT_LOW);
+		addNode("rightHigh", COLOR_RIGHT_HIGH);
+		endSave();
+		std::cout << "Saved color calibration data." << std::endl;
+	}
+
+	void saveCamera() {
+		beginSave("config/camera.yml");
+		addNode("matrix", CAMERA_MAT);
+		addNode("distortion", CAMERA_DIST);
+		endSave();
+		std::cout << "Saved camera intristic and distortion matrix." << std::endl;
+	}
+
 	void loop(cv::Mat frame) {
-		processController(frame, false);
-		processController(frame, true);
+		processController(frame, false);  // right
+		processController(frame, true);  // left
 	}
 }

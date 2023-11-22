@@ -52,8 +52,18 @@ bool controllerLoopRunning = true;
 float opticalTimestep = 0.f;
 float opticalLastTick = 0.f;
 
-cv::Scalar colorLow = cv::Scalar(95, 0, 92);
-cv::Scalar colorHigh = cv::Scalar(229, 169, 255);
+int currentApplicationStage = 0;
+
+float centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, rangeV = 0.f;
+
+cv::Mat camCalibCaptures[30];
+int capturedFramesCamCalib = 0;
+float camCalibSquareSize = 2.f;
+
+void captureCameraImage(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
+	eyes[0]->getFrame(videoPixels);
+	img.data = videoPixels;
+}
 
 void controllerLoopTask() {
 	while (controllerLoopRunning) {
@@ -67,11 +77,50 @@ void opticalTask(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 		opticalTimestep = curTime - opticalLastTick;
 		opticalLastTick = curTime;
 
-		eyes[0]->getFrame(videoPixels);
-		img.data = videoPixels;
-
-		opticalMethods::loop(img);
+		if (currentApplicationStage == 0) {
+			//captureCameraImage(eyes, img);
+			opticalMethods::loop(img);
+		}
 	}
+}
+
+void showCameraWindow(cv::Mat img, const char* name) {
+	ImGui::Begin(name);
+	if (!ImGui::IsWindowCollapsed()) {
+		// image display
+		glBindTexture(GL_TEXTURE_2D, camTexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, img.ptr());
+		ImGui::Image((void*)(intptr_t)camTexture, videoSize);
+	}
+	ImGui::End();
+}
+
+std::tuple<bool, cv::Scalar, cv::Scalar> colorCalibrationStage(PS3EYECam::PS3EYERef* eyes, cv::Mat img, const char* controller) {
+	captureCameraImage(eyes, img);
+
+	// info & controls
+	ImGui::Begin("Color calibration");
+	ImGui::Text("This is the color calibration stage for the %s controller. Choose the center and range color values below so that only the controller is shown on the mask window.", controller);
+
+	ImGui::SliderFloat("Hue center", &centerH, 0.f, 179.f);
+	ImGui::SliderFloat("Hue range", &rangeH, 0.f, 179.f);
+	ImGui::Separator();
+	ImGui::SliderFloat("Saturation center", &centerS, 0.f, 255.f);
+	ImGui::SliderFloat("Saturation range", &rangeS, 0.f, 255.f);
+	ImGui::Separator();
+	ImGui::SliderFloat("Value center", &centerV, 0.f, 255.f);
+	ImGui::SliderFloat("Value range", &rangeV, 0.f, 255.f);
+	ImGui::Separator();
+	bool finished = ImGui::Button("Finish", ImVec2(150, 25));
+	ImGui::End();
+
+	// mask output
+	auto [masked, low, high] = calibrateColor(img, centerH, rangeH, centerS, rangeS, centerV, rangeV);
+	cv::Mat bgrMask;
+	cv::cvtColor(masked, bgrMask, cv::COLOR_GRAY2BGR);
+	showCameraWindow(bgrMask, "Mask window");
+
+	return { finished, low, high };
 }
 
 int main(int argc, char** argv)
@@ -158,9 +207,11 @@ int main(int argc, char** argv)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init();
+	glDisable(GL_DEPTH_TEST);
+	glClearColor(0.647f, 0.765f, 0.804f, 1.f);
 
 	// optical calibration
-	opticalMethods::calibrate(&moves);
+	opticalMethods::init(&moves, eyes[0]);
 
 	// tasks
 	std::thread controllerTaskThread(controllerLoopTask);
@@ -175,68 +226,138 @@ int main(int argc, char** argv)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		// controllers
-		glm::quat sensorQuatL = moves.left.orientation;
-		glm::quat glSpaceQuatL = glm::quat(sensorQuatL.w, sensorQuatL.x, sensorQuatL.z, -sensorQuatL.y);
+		switch (currentApplicationStage) {
+		case 0: // main stage
+		{
+			// controllers
+			glm::quat sensorQuatL = moves.left.orientation;
+			glm::quat glSpaceQuatL = glm::quat(sensorQuatL.w, sensorQuatL.x, sensorQuatL.z, -sensorQuatL.y);
 
-		glm::quat sensorQuatR = moves.right.orientation;
-		glm::quat glSpaceQuatR = glm::quat(sensorQuatR.w, sensorQuatR.x, sensorQuatR.z, -sensorQuatR.y);
+			glm::quat sensorQuatR = moves.right.orientation;
+			glm::quat glSpaceQuatR = glm::quat(sensorQuatR.w, sensorQuatR.x, sensorQuatR.z, -sensorQuatR.y);
 
-		// camera output
-		ImGui::Begin("Camera output ");
-		if (!ImGui::IsWindowCollapsed()) {
-			// image display
-			glBindTexture(GL_TEXTURE_2D, camTexture);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, camImg.ptr());
-			ImGui::Image((void*)(intptr_t)camTexture, videoSize);
+			// camera output
+			showCameraWindow(camImg, "Camera output");
+
+			// realtime vis
+			ImGui::Begin("Visualization");
+
+			GlCall(controllerWindow.Use());
+			glClearColor(0.447f, 0.565f, 0.604f, 1.f);
+			glEnable(GL_DEPTH_TEST);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			controllerShader.Use();
+			controllerTexture.Use(GL_TEXTURE1);
+			controllerSpecular.Use(GL_TEXTURE2);
+			controllerDiffuse.Use(GL_TEXTURE3);
+			controllerShader.SetMatrix4("projection", proj);
+			controllerShader.SetInt("texture0", 1);
+			controllerShader.SetInt("textureSpec", 2);
+			controllerShader.SetInt("textureDiff", 3);
+
+			// left pass
+			glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
+			controllerShader.SetMatrix4("transform", transformMatrix);
+			controllerShader.SetVector4("translate", glm::vec4(-0.2f, 0.f, 0.f, 0.f));
+			controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
+			GlCall(controllerGL.Draw());
+
+			// right pass
+			transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
+			controllerShader.SetMatrix4("transform", transformMatrix);
+			controllerShader.SetVector4("translate", glm::vec4(0.2f, 0.f, 0.f, 0.f));
+			controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
+			GlCall(controllerGL.Draw());
+
+			controllerWindow.Deuse();
+			glDisable(GL_DEPTH_TEST);
+			glClearColor(0.647f, 0.765f, 0.804f, 1.f);
+			controllerWindow.UseTexture();
+			ImGui::Image((void*)(intptr_t)controllerWindow.tex, videoSize, ImVec2(0, 1), ImVec2(1, 0));
+			ImGui::End();
+
+			// diagnostics
+			ImGui::Begin("Diagnostics");
+			ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+			ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
+			if (moves.leftConnected) ImGui::Text("Left AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
+			if (moves.rightConnected) ImGui::Text("Right AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.right.timestep * 1000.f, 1.f / moves.right.timestep);
+			ImGui::End();
+
+			// stage switching (recalibration etc.)
+			ImGui::Begin("Calibration");
+			if (ImGui::Button("Calibrate left color", ImVec2(150, 25))) {
+				currentApplicationStage = 1;
+				centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, rangeV = 0.f;
+			}
+			if (ImGui::Button("Calibrate right color", ImVec2(150, 25))) {
+				currentApplicationStage = 2;
+				centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, rangeV = 0.f;
+			}
+			if (ImGui::Button("Calibrate camera", ImVec2(150, 25))) {
+				eyes[0]->setExposure(150);
+				eyes[0]->setGain(100);
+				capturedFramesCamCalib = 0;
+				std::fill_n(camCalibCaptures, 30, cv::Mat());
+				currentApplicationStage = 3;
+			}
+			ImGui::End();
+
+			break;
 		}
-		ImGui::End();
+		case 1: // color calibration LEFT
+		{
+			auto [finished, low, high] = colorCalibrationStage(eyes, camImg, "LEFT");
+			if (finished) {
+				opticalMethods::COLOR_LEFT_LOW = low;
+				opticalMethods::COLOR_LEFT_HIGH = high;
+				currentApplicationStage = 0;
+				opticalMethods::saveColor();
+			}
 
-		// realtime vis
-		ImGui::Begin("Visualization");
+			break;
+		}
+		case 2: // color calibration RIGHT
+		{
+			auto [finished, low, high] = colorCalibrationStage(eyes, camImg, "RIGHT");
+			if (finished) {
+				opticalMethods::COLOR_RIGHT_LOW = low;
+				opticalMethods::COLOR_RIGHT_HIGH = high;
+				currentApplicationStage = 0;
+				opticalMethods::saveColor();
+			}
 
-		GlCall(controllerWindow.Use());
-		glClearColor(0.447f, 0.565f, 0.604f, 1.f);
-		glEnable(GL_DEPTH_TEST);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			break;
+		}
+		case 3: // camera calibration
+		{
+			captureCameraImage(eyes, camImg);
+			showCameraWindow(camImg, "Camera output");
 
-		controllerShader.Use();
-		controllerTexture.Use(GL_TEXTURE1);
-		controllerSpecular.Use(GL_TEXTURE2);
-		controllerDiffuse.Use(GL_TEXTURE3);
-		controllerShader.SetMatrix4("projection", proj);
-		controllerShader.SetInt("texture0", 1);
-		controllerShader.SetInt("textureSpec", 2);
-		controllerShader.SetInt("textureDiff", 3);
+			ImGui::Begin("Camera calibration");
+			ImGui::Text("This is the camera calibration stage. Please put a chessboard (doesn't matter if it's printed) in front of the camera so that it's seen and press the Capture button. Make sure to have different angles in each capture. Try to take at least 15 shots.");
+			ImGui::SliderFloat("Square length (cm)", &camCalibSquareSize, 0.f, 10.f);
+			if (ImGui::Button("Capture")) {
+				cv::imshow("eggman", camImg);
+				cv::waitKey(0);
+				camCalibCaptures[capturedFramesCamCalib] = camImg.clone();
+				capturedFramesCamCalib++;
+			}
+			if (ImGui::Button("Finish")) {
+				eyes[0]->setExposure(20);
+				eyes[0]->setGain(0);
+				auto [ret, mat, dist] = calibrateCamera(camCalibCaptures, capturedFramesCamCalib, camCalibSquareSize);
+				opticalMethods::CAMERA_MAT = mat;
+				opticalMethods::CAMERA_DIST = dist;
+				//opticalMethods::saveCamera();
+				currentApplicationStage = 0;
+			}
+			ImGui::End();
 
-		// left pass
-		glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
-		controllerShader.SetMatrix4("transform", transformMatrix);
-		controllerShader.SetVector4("translate", glm::vec4(-0.2f, 0.f, 0.f, 0.f));
-		controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
-		GlCall(controllerGL.Draw());
-
-		// right pass
-		transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
-		controllerShader.SetMatrix4("transform", transformMatrix);
-		controllerShader.SetVector4("translate", glm::vec4(0.2f, 0.f, 0.f, 0.f));
-		controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
-		GlCall(controllerGL.Draw());
-
-		controllerWindow.Deuse();
-		glDisable(GL_DEPTH_TEST);
-		glClearColor(0.647f, 0.765f, 0.804f, 1.f);
-		controllerWindow.UseTexture();
-		ImGui::Image((void*)(intptr_t)controllerWindow.tex, videoSize, ImVec2(0, 1), ImVec2(1, 0));
-		ImGui::End();
-
-		// diagnostics
-		ImGui::Begin("Diagnostics");
-		ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-		ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
-		if (moves.leftConnected) ImGui::Text("Left AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
-		if (moves.rightConnected) ImGui::Text("Right AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.right.timestep * 1000.f, 1.f / moves.right.timestep);
-		ImGui::End();
+			break;
+		}
+		}
 
 		//render
 		ImGui::Render();
