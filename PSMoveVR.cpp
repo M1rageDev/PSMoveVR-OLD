@@ -34,6 +34,7 @@
 #include <iostream> 
 #include <chrono>
 #include <format>
+#include <algorithm>
 
 using namespace ps3eye;
 
@@ -44,6 +45,7 @@ unsigned char* videoPixels;
 const int width = 640;
 const int height = 480;
 ImVec2 videoSize(width, height);
+cv::Size videoSizeCV(width, height);
 
 ControllerHandler moves("00:06:f7:c9:a1:fb", "00:13:8a:9c:31:42");
 psmoveapi::PSMoveAPI moveAPI(&moves);
@@ -56,13 +58,11 @@ int currentApplicationStage = 0;
 
 float centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, rangeV = 0.f;
 
-cv::Mat camCalibCaptures[30];
 int capturedFramesCamCalib = 0;
-float camCalibSquareSize = 2.f;
+float camCalibSquareSize = 2.5f;
 
 void captureCameraImage(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 	eyes[0]->getFrame(videoPixels);
-	img.data = videoPixels;
 }
 
 void controllerLoopTask() {
@@ -78,8 +78,8 @@ void opticalTask(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 		opticalLastTick = curTime;
 
 		if (currentApplicationStage == 0) {
-			//captureCameraImage(eyes, img);
-			opticalMethods::loop(img);
+			captureCameraImage(eyes, img);
+			opticalMethods::loop(cv::Mat(videoSizeCV, CV_8UC3, videoPixels));
 		}
 	}
 }
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
 	PS3EYECam::PS3EYERef* eyes = new PS3EYECam::PS3EYERef[devices.size()];
 	for (int i = 0; i < devices.size(); i++) {
 		PS3EYECam::PS3EYERef eye = devices.at(i);
-		eye->init(width, height, 60);
+		eye->init(width, height, 75);
 		eye->setExposure(20);
 		eye->setGain(0);
 		eye->setFlip(true);
@@ -266,7 +266,7 @@ int main(int argc, char** argv)
 			// right pass
 			transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(0.2f, 0.f, 0.f, 0.f));
+			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::right3D / 100.f, 1.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
 			GlCall(controllerGL.Draw());
 
@@ -279,6 +279,9 @@ int main(int argc, char** argv)
 
 			// diagnostics
 			ImGui::Begin("Diagnostics");
+			ImGui::Text("X %.1f", opticalMethods::right3D.x);
+			ImGui::Text("Y %.1f", opticalMethods::right3D.y);
+			ImGui::Text("Z %.1f", opticalMethods::right3D.z);
 			ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 			ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
 			if (moves.leftConnected) ImGui::Text("Left AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
@@ -299,8 +302,8 @@ int main(int argc, char** argv)
 				eyes[0]->setExposure(150);
 				eyes[0]->setGain(100);
 				capturedFramesCamCalib = 0;
-				std::fill_n(camCalibCaptures, 30, cv::Mat());
 				currentApplicationStage = 3;
+				startCalibratingCamera(camCalibSquareSize);
 			}
 			ImGui::End();
 
@@ -337,20 +340,19 @@ int main(int argc, char** argv)
 
 			ImGui::Begin("Camera calibration");
 			ImGui::Text("This is the camera calibration stage. Please put a chessboard (doesn't matter if it's printed) in front of the camera so that it's seen and press the Capture button. Make sure to have different angles in each capture. Try to take at least 15 shots.");
-			ImGui::SliderFloat("Square length (cm)", &camCalibSquareSize, 0.f, 10.f);
+			//ImGui::SliderFloat("Square length (cm)", &camCalibSquareSize, 0.f, 10.f);
+			ImGui::Text("Captured frames: %i", capturedFramesCamCalib);
 			if (ImGui::Button("Capture")) {
-				cv::imshow("eggman", camImg);
-				cv::waitKey(0);
-				camCalibCaptures[capturedFramesCamCalib] = camImg.clone();
+				calibrateCamera(cv::Mat(cv::Size(width, height), CV_8UC3, videoPixels), false);
 				capturedFramesCamCalib++;
 			}
 			if (ImGui::Button("Finish")) {
 				eyes[0]->setExposure(20);
 				eyes[0]->setGain(0);
-				auto [ret, mat, dist] = calibrateCamera(camCalibCaptures, capturedFramesCamCalib, camCalibSquareSize);
+				auto [ret, mat, dist] = calibrateCamera(cv::Mat(cv::Size(width, height), CV_8UC3, videoPixels), true);
 				opticalMethods::CAMERA_MAT = mat;
 				opticalMethods::CAMERA_DIST = dist;
-				//opticalMethods::saveCamera();
+				opticalMethods::saveCamera();
 				currentApplicationStage = 0;
 			}
 			ImGui::End();
