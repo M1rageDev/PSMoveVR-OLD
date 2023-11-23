@@ -20,6 +20,7 @@
 #include "IMUCalibration.h"
 #include "RenderObject.h"
 #include "OpticalDetection.h"
+#include "CameraCalibration.h"
 #include "ImGuiGL.h"
 #include "Texture.h"
 #include "Macros.h"
@@ -179,13 +180,13 @@ int main(int argc, char** argv)
 	// realtime visualization
 	Shader controllerShader = Shader("shaders/test.vert", "shaders/test.frag");
 	RenderObject controllerGL = RenderObject(&controllerShader);
-	controllerGL.LoadModel("models/psmove.obj");
+	controllerGL.LoadModel("models/psmove_small.obj");
 	Texture controllerTexture = Texture("textures/psmove.png");
 	Texture controllerDiffuse = Texture("textures/psmove_diff.png");
 	Texture controllerSpecular = Texture("textures/psmove_spec.png");
 
 	ImGuiGL controllerWindow = ImGuiGL(640, 480);
-	glm::mat4 proj = glm::perspective(glm::radians(60.f), 640.f / 480.f, 0.1f, 100.f);
+	glm::mat4 proj = glm::perspective(glm::radians(80.f), 640.f / 480.f, 0.1f, 100.f);
 
 	// realtime video texture
 	glGenTextures(1, &camTexture);
@@ -259,7 +260,7 @@ int main(int argc, char** argv)
 			// left pass
 			glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(-0.2f, 0.f, 0.f, 0.f));
+			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::left3D / 100.f, 1.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
 			GlCall(controllerGL.Draw());
 
@@ -279,13 +280,23 @@ int main(int argc, char** argv)
 
 			// diagnostics
 			ImGui::Begin("Diagnostics");
-			ImGui::Text("X %.1f", opticalMethods::right3D.x);
-			ImGui::Text("Y %.1f", opticalMethods::right3D.y);
-			ImGui::Text("Z %.1f", opticalMethods::right3D.z);
+			
 			ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 			ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
-			if (moves.leftConnected) ImGui::Text("Left AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
-			if (moves.rightConnected) ImGui::Text("Right AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.right.timestep * 1000.f, 1.f / moves.right.timestep);
+			if (moves.leftConnected) {
+				ImGui::SeparatorText("Left");
+				ImGui::Text("X %.1f", opticalMethods::left3D.x);
+				ImGui::Text("Y %.1f", opticalMethods::left3D.y);
+				ImGui::Text("Z %.1f", opticalMethods::left3D.z);
+				ImGui::Text("AHRS thread running at % .3f ms / frame(% .1f FPS)", moves.left.timestep * 1000.f, 1.f / moves.left.timestep);
+			}
+			if (moves.rightConnected) {
+				ImGui::SeparatorText("Right");
+				ImGui::Text("X %.1f", opticalMethods::right3D.x);
+				ImGui::Text("Y %.1f", opticalMethods::right3D.y);
+				ImGui::Text("Z %.1f", opticalMethods::right3D.z);
+				ImGui::Text("AHRS thread running at %.3f ms/frame (%.1f FPS)", moves.right.timestep * 1000.f, 1.f / moves.right.timestep);
+			}
 			ImGui::End();
 
 			// stage switching (recalibration etc.)
@@ -340,7 +351,6 @@ int main(int argc, char** argv)
 
 			ImGui::Begin("Camera calibration");
 			ImGui::Text("This is the camera calibration stage. Please put a chessboard (doesn't matter if it's printed) in front of the camera so that it's seen and press the Capture button. Make sure to have different angles in each capture. Try to take at least 15 shots.");
-			//ImGui::SliderFloat("Square length (cm)", &camCalibSquareSize, 0.f, 10.f);
 			ImGui::Text("Captured frames: %i", capturedFramesCamCalib);
 			if (ImGui::Button("Capture")) {
 				calibrateCamera(cv::Mat(cv::Size(width, height), CV_8UC3, videoPixels), false);
@@ -371,7 +381,7 @@ int main(int argc, char** argv)
 	controllerLoopRunning = false;
 	controllerTaskThread.join();
 	opticalTaskThread.join();
-	for (int i = 0; i < devices.size(); i++)
+	for (int i = 0; i < sizeof(eyes) / sizeof(eyes[0]); i++)
 		eyes[i]->stop();
 	glDeleteTextures(1, &camTexture);
 	ImGui_ImplOpenGL3_Shutdown();

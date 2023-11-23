@@ -7,10 +7,17 @@
 
 const glm::quat MOVE_Q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
 
+struct ButtonStructure {
+	float trigger = 0.f;
+	bool square, triangle, cross, circle, move, select, start, playstation;
+};
+
 struct ControllerStructure {
 	MadgwickAHRS ahrs = MadgwickAHRS(glm::quat(0.7071069f, 0.7071067f, 0.f, 0.f));
 	RGB color = { 0.f, 0.f, 0.f };
 	float rumble = 0.f;
+
+	ButtonStructure buttons = ButtonStructure();	
 
 	glm::vec3 accel = { 0.f, 0.f, 0.f };
 	glm::vec3 gyro = { 0.f, 0.f, 0.f };
@@ -33,6 +40,16 @@ struct ControllerStructure {
 
 		controller->color = color;
 		controller->rumble = rumble;
+
+		buttons.square = (controller->buttons & Btn_SQUARE) != 0;
+		buttons.triangle = (controller->buttons & Btn_TRIANGLE) != 0;
+		buttons.cross = (controller->buttons & Btn_CROSS) != 0;
+		buttons.circle = (controller->buttons & Btn_CIRCLE) != 0;
+		buttons.move = (controller->buttons & Btn_MOVE) != 0;
+		buttons.select = (controller->buttons & Btn_SELECT) != 0;
+		buttons.start = (controller->buttons & Btn_START) != 0;
+
+		buttons.trigger = controller->trigger;
 	}
 };
 

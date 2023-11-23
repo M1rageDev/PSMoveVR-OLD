@@ -25,57 +25,6 @@ std::vector<cv::Point3d> OBJECT_POINTS = {
 	cv::Point3d(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS,  0.f),
 	cv::Point3d(-REAL_BALL_RADIUS, -REAL_BALL_RADIUS,  0.f) };
 
-std::vector<cv::Point3f> CAM_CALIB_OBJ_POINT;
-std::vector<std::vector<cv::Point3f>> CAM_CALIB_OBJ_POINTS;
-std::vector<std::vector<cv::Point2f>> CAM_CALIB_IMG_POINTS;
-
-void startCalibratingCamera(float squareSize) {
-	CAM_CALIB_OBJ_POINT.clear();
-	CAM_CALIB_OBJ_POINTS.clear();
-	CAM_CALIB_IMG_POINTS.clear();
-
-	for (int y = 0; y < 7; y++) {
-		for (int x = 0; x < 7; x++) {
-			CAM_CALIB_OBJ_POINT.push_back(cv::Point3f((float)(x * squareSize), (float)(y * squareSize), 0.f));
-		}
-	}
-}
-
-std::tuple<bool, cv::Mat, cv::Mat> calibrateCamera(cv::Mat image, bool finish) {
-	if (!finish) {
-		cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER, 30, 0.001);
-
-		cv::Mat gray;
-		cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-
-		cv::Mat corners;
-		bool ret = cv::findChessboardCorners(gray, cv::Size(7, 7), corners, cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_FAST_CHECK | cv::CALIB_CB_NORMALIZE_IMAGE);
-		if (ret) {
-			cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), criteria);
-			CAM_CALIB_IMG_POINTS.push_back(corners);
-			CAM_CALIB_OBJ_POINTS.push_back(CAM_CALIB_OBJ_POINT);
-			std::cout << "Added one" << std::endl;
-		}
-
-		return { false, cv::Mat(), cv::Mat() };
-	}
-
-	// calibrate
-	if (CAM_CALIB_OBJ_POINTS.size() > 0) {
-		cv::Mat camMatrix, camDist;
-		std::vector<cv::Mat> rvecs, tvecs;
-		cv::Size imgSize = cv::Size(image.cols, image.rows);
-
-		double ret = cv::calibrateCamera(CAM_CALIB_OBJ_POINTS, CAM_CALIB_IMG_POINTS, imgSize, camMatrix, camDist, rvecs, tvecs);
-		std::cout << "Successfully calibrated camera." << std::endl;
-		return { true, camMatrix, camDist };
-	}
-	else {
-		std::cout << "Could not calibrate camera: no points captured.";
-		return { true, cv::Mat(), cv::Mat() };
-	}
-}
-
 std::tuple<cv::Mat, cv::Scalar, cv::Scalar> calibrateColor(cv::Mat frame, float hCenter, float hRange, float sCenter, float sRange, float vCenter, float vRange) {
 	cv::Mat hsvFrame, detected;
 	cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
@@ -190,7 +139,6 @@ namespace opticalMethods {
 
 		glm::vec3 ball = detectBall(frame, colorLow, colorHigh);
 		if (ball.z <= 0) return { false, glm::vec3() };
-		cv::circle(frame, cv::Point(ball.x, ball.y), (int)ball.z, cv::Scalar(255, 255, 255), 3);
 
 		glm::vec3 cameraSpace = estimate3D_coneFitting(ball, CAMERA_MAT.at<double>(0, 0), frame.cols, frame.rows);
 		return { true, cameraSpace };
@@ -241,8 +189,8 @@ namespace opticalMethods {
 	void loop(cv::Mat frame) {
 		auto [_, right3D] = processController(frame, false);  // right
 		auto [__, left3D] = processController(frame, true);  // left
-		opticalMethods::right3D = vrmath::posFilter(lastRight3D, right3D, 0.f, 0.f);
-		opticalMethods::left3D = vrmath::posFilter(lastLeft3D, left3D, 0.f, 0.f);
+		opticalMethods::right3D = vrmath::posFilter(lastRight3D, right3D, 0.f, 3.f);
+		opticalMethods::left3D = vrmath::posFilter(lastLeft3D, left3D, 0.f, 3.f);
 		lastRight3D = right3D;
 		lastLeft3D = left3D;
 	}
