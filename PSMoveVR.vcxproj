@@ -151,6 +151,7 @@
     <ClCompile Include="include\PS3EYEDriver\src\ps3eye_capi.cpp" />
     <ClCompile Include="MadgwickAHRS.cpp" />
     <ClCompile Include="PSMoveVR.cpp" />
+    <ClCompile Include="RenderGrid.cpp" />
     <ClCompile Include="RenderObject.cpp" />
     <ClCompile Include="Shader.cpp" />
     <ClCompile Include="stb_image.cpp" />

@@ -10,13 +10,14 @@
 class RenderGrid
 {
 public:
+	int width, height;
+
 	RenderGrid();
-	RenderGrid(Shader* shader_);
+	RenderGrid(Shader* shader_, int w, int h);
 	~RenderGrid();
 	void Draw();
-	void LoadModel(std::string path);
 private:
 	GLuint VBO, VAO, EBO;
 	Shader* shader;
-	unsigned int triLength;
+	unsigned int elementLength;
 };

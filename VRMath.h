@@ -25,7 +25,7 @@ namespace vrmath {
 	glm::vec3 posFilter(glm::vec3 l, glm::vec3 c, float xy_delta, float z_delta) {
 		float mag = glm::length(l - c);
 		float XYweight = clamp01(lerp(0.4f, 0.75f, mag / 5.f + xy_delta));
-		float Zweight = clamp01(lerp(0.2f, 0.5f, mag / 5.f + z_delta));
+		float Zweight = clamp01(lerp(0.05f, 0.1f, mag / 5.f + z_delta));
 
 		return glm::vec3(lerp(l.x, c.x, XYweight), lerp(l.y, c.y, XYweight), lerp(l.z, c.z, Zweight));
 	}

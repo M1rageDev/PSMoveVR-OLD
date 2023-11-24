@@ -75,6 +75,9 @@
     <ClCompile Include="CameraCalibration.h">
       <Filter>Header Files</Filter>
     </ClCompile>
+    <ClCompile Include="RenderGrid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\glad\glad.h">

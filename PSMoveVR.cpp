@@ -18,6 +18,7 @@
 #include <psmoveapi/psmove.h>
 #include "ControllerHandler.h"
 #include "IMUCalibration.h"
+#include "RenderGrid.h"
 #include "RenderObject.h"
 #include "CameraCalibration.h"
 #include "OpticalDetection.h"
@@ -62,6 +63,9 @@ float centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, r
 int capturedFramesCamCalib = 0;
 float camCalibSquareSize = 2.5f;
 
+int camPoseCalibStage = 0;
+std::vector<cv::Point2f> camPoseCalibSamples;
+
 void captureCameraImage(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 	eyes[0]->getFrame(videoPixels);
 }
@@ -78,9 +82,9 @@ void opticalTask(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 		opticalTimestep = curTime - opticalLastTick;
 		opticalLastTick = curTime;
 
-		if (currentApplicationStage == 0) {
+		if (currentApplicationStage == 0 || currentApplicationStage == 4) {
 			captureCameraImage(eyes, img);
-			opticalMethods::loop(cv::Mat(videoSizeCV, CV_8UC3, videoPixels));
+			opticalMethods::loop(cv::Mat(videoSizeCV, CV_8UC3, videoPixels), opticalTimestep / 1000.f);
 		}
 	}
 }
@@ -178,7 +182,10 @@ int main(int argc, char** argv)
 	cv::Mat camImg(width, height, CV_8UC3, videoPixels);
 
 	// realtime visualization
-	Shader controllerShader = Shader("shaders/test.vert", "shaders/test.frag");
+	Shader gridShader = Shader("shaders/grid.vert", "shaders/grid.frag");
+	RenderGrid gridGL = RenderGrid(&gridShader, 5, 5);
+
+	Shader controllerShader = Shader("shaders/controller.vert", "shaders/controller.frag");
 	RenderObject controllerGL = RenderObject(&controllerShader);
 	controllerGL.LoadModel("models/psmove_small.obj");
 	Texture controllerTexture = Texture("textures/psmove.png");
@@ -260,16 +267,22 @@ int main(int argc, char** argv)
 			// left pass
 			glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::left3D / 100.f, 1.f));
+			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::left3D / 100.f, 1.f) + glm::vec4(0.f, 0.f, 2.f, 0.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
 			GlCall(controllerGL.Draw());
 
 			// right pass
 			transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::right3D / 100.f, 1.f));
+			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::right3D / 100.f, 1.f) + glm::vec4(0.f, 0.f, 2.f, 0.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
 			GlCall(controllerGL.Draw());
+
+			// grid (broken)
+			//gridShader.Use();
+			//gridShader.SetMatrix4("projection", proj);
+			//gridShader.SetVector3("color", glm::vec3(1.f, 1.f, 1.f));
+			//GlCall(gridGL.Draw());
 
 			controllerWindow.Deuse();
 			glDisable(GL_DEPTH_TEST);
@@ -301,6 +314,7 @@ int main(int argc, char** argv)
 
 			// stage switching (recalibration etc.)
 			ImGui::Begin("Calibration");
+			if (!opticalMethods::CAMERA_POSE_CALIBRATED) ImGui::Text("Warning: Camera pose not calibrated.");
 			if (ImGui::Button("Calibrate left color", ImVec2(150, 25))) {
 				currentApplicationStage = 1;
 				centerH = 0.f, centerS = 0.f, centerV = 0.f, rangeH = 0.f, rangeS = 0.f, rangeV = 0.f;
@@ -315,6 +329,15 @@ int main(int argc, char** argv)
 				capturedFramesCamCalib = 0;
 				currentApplicationStage = 3;
 				startCalibratingCamera(camCalibSquareSize);
+			}
+			if (opticalMethods::COLOR_CALIBRATED && opticalMethods::CAMERA_CALIBRATED) {
+				if (ImGui::Button("Calibrate camera pose", ImVec2(150, 25))) {
+					eyes[0]->setExposure(150);
+					eyes[0]->setGain(100);
+					camPoseCalibStage = 0;
+					camPoseCalibSamples.clear();
+					currentApplicationStage = 4;
+				}
 			}
 			ImGui::End();
 
@@ -364,6 +387,51 @@ int main(int argc, char** argv)
 				opticalMethods::CAMERA_DIST = dist;
 				opticalMethods::saveCamera();
 				currentApplicationStage = 0;
+			}
+			ImGui::End();
+
+			break;
+		}
+		case 4: // camera pose calibration
+		{
+			captureCameraImage(eyes, camImg);
+			showCameraWindow(camImg, "Camera output");
+
+			ImGui::Begin("Camera pose calibration");
+			switch (camPoseCalibStage) {
+			case 0:
+				ImGui::Text("Place an A4-sized paper sheet anywhere on the playspace floor. Make sure it can be clearly seen by the camera and press 'Next'");
+				break;
+			case 1:
+				ImGui::Text("Place the RIGHT controller in corner 1 and click the 'Next' button");
+				break;
+			case 2:
+				ImGui::Text("Place the RIGHT controller in corner 2 and click the 'Next' button");
+				break;
+			case 3:
+				ImGui::Text("Place the RIGHT controller in corner 3 and click the 'Next' button");
+				break;
+			case 4:
+				ImGui::Text("Place the RIGHT controller in corner 4 and click the 'Next' button");
+				break;
+			case 5:
+				// calibrate
+				auto [ret, matrix] = calibrateWorldMatrix(camPoseCalibSamples, opticalMethods::CAMERA_MAT, opticalMethods::CAMERA_DIST);
+				std::cout << matrix << std::endl;
+				opticalMethods::CAMERA_POSE = matrix;
+				opticalMethods::saveCameraPose();
+				currentApplicationStage = 0;
+			}
+
+			if (ImGui::Button("Next")) {
+				if (camPoseCalibStage == 0) {
+					eyes[0]->setExposure(20);
+					eyes[0]->setGain(0);
+				}
+				else {
+					camPoseCalibSamples.push_back(cv::Point2f(opticalMethods::right2D.x, opticalMethods::right2D.y));
+				}
+				camPoseCalibStage++;
 			}
 			ImGui::End();
 

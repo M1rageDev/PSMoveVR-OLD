@@ -12,7 +12,7 @@
 #define VRCAMCALIB_H
 
 // A4 paper is (10.5, 14.85)
-extern std::vector<cv::Point3f> CALIBRATION_MAT_OBJECT;
+inline std::vector<cv::Point3f> CALIBRATION_MAT_OBJECT;
 
 inline std::vector<cv::Point3f> CAM_CALIB_OBJ_POINT;
 inline std::vector<std::vector<cv::Point3f>> CAM_CALIB_OBJ_POINTS;
@@ -78,7 +78,11 @@ inline std::tuple<bool, cv::Mat> calibrateWorldMatrix(std::vector<cv::Point2f> s
 
 	if (ret) {
 		std::cout << "Computing inverse camera pose..." << std::endl;
-
+		cv::Mat R, inv_R, mtx;
+		cv::Rodrigues(rvecs, R);
+		cv::invert(R, inv_R);
+		cv::hconcat(inv_R, tvecs, mtx);
+		return { true,  mtx };
 	}
 	else {
 		return { false, cv::Mat() };
