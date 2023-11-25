@@ -128,8 +128,9 @@ namespace opticalMethods {
 	cv::Mat CAMERA_DIST;
 
 	bool CAMERA_POSE_CALIBRATED = false;
-	cv::Mat CAMERA_POSE;
-	glm::mat4x3 CAMERA_POSE_GLM;
+	glm::mat4 CAMERA_POSE;
+
+	glm::vec4 HEAD_POSITION;
 
 	ControllerHandler* moves;
 	PS3EYECam::PS3EYERef cam;
@@ -137,26 +138,26 @@ namespace opticalMethods {
 	glm::vec3 right2D;
 	glm::vec3 left2D;
 
-	glm::vec3 right3D;
-	glm::vec3 left3D;
-	glm::vec3 lastRight3D;
-	glm::vec3 lastLeft3D;
+	glm::vec4 right3D;
+	glm::vec4 left3D;
+	glm::vec4 lastRight3D;
+	glm::vec4 lastLeft3D;
 
 	float lastRightRadius = 0.f;
 	float lastLeftRadius = 0.f;
 
-	glm::vec3 transformSpace(glm::vec3 camCoord) {
+	glm::vec4 transformSpace(glm::vec3 camCoord) {
 		glm::vec4 tvec4 = glm::vec4(camCoord, 1.f);
-		glm::vec4 worldCoord = tvec4 * CAMERA_POSE_GLM;
-		return glm::vec3(tvec4);
+		glm::vec4 worldCoord = CAMERA_POSE * tvec4;
+		return worldCoord;
 	}
 
-	std::tuple<bool, glm::vec3> processController(cv::Mat frame, float dt, bool left) {
+	std::tuple<bool, glm::vec4> processController(cv::Mat frame, float dt, bool left) {
 		cv::Scalar colorLow = left ? COLOR_LEFT_LOW : COLOR_RIGHT_LOW;
 		cv::Scalar colorHigh = left ? COLOR_LEFT_HIGH : COLOR_RIGHT_HIGH;
 
 		glm::vec3 ball = detectBall(frame, colorLow, colorHigh);
-		if (ball.z <= 0) return { false, glm::vec3() };
+		if (ball.z <= 0) return { false, glm::vec4() };
 
 		ball.z = vrmath::lerp(left ? lastLeftRadius : lastRightRadius, ball.z, dt * 4.f);
 
@@ -170,13 +171,8 @@ namespace opticalMethods {
 		}
 
 		glm::vec3 cameraSpace = estimate3D_coneFitting(ball, CAMERA_MAT.at<double>(0, 0), frame.cols, frame.rows);
-		if (CAMERA_POSE_CALIBRATED) {
-			glm::vec3 worldSpace = transformSpace(cameraSpace);
-			return { true, worldSpace };
-		}
-		else {
-			return { true, cameraSpace };
-		}
+		glm::vec4 worldSpace = transformSpace(cameraSpace);
+		return { true, worldSpace };
 	}
 
 	void init(ControllerHandler* controllers, PS3EYECam::PS3EYERef eye) {
@@ -204,11 +200,10 @@ namespace opticalMethods {
 			std::cout << "Loaded color calibration data." << std::endl;
 		}
 
-		if (fileExists("config/color.yml")) {
+		if (fileExists("config/cameraPose.yml")) {
 			beginRead("config/cameraPose.yml");
-			CAMERA_POSE = readNode("matrix");
+			CAMERA_POSE = glm::transpose(readNodeMat4("matrix"));  // TODO: FIX THIS
 			endRead();
-			memcpy(glm::value_ptr(CAMERA_POSE_GLM), CAMERA_POSE.data, 12 * sizeof(CAMERA_POSE.data[0]));
 			CAMERA_POSE_CALIBRATED = true;
 			std::cout << "Loaded camera-to-world matrix." << std::endl;
 		}
@@ -238,7 +233,6 @@ namespace opticalMethods {
 		beginSave("config/cameraPose.yml");
 		addNode("matrix", CAMERA_POSE);
 		endSave();
-		memcpy(glm::value_ptr(CAMERA_POSE_GLM), CAMERA_POSE.data, 12 * sizeof(CAMERA_POSE.data[0]));
 		CAMERA_POSE_CALIBRATED = true;
 		std::cout << "Saved camera-to-world matrix." << std::endl;
 	}
@@ -246,8 +240,8 @@ namespace opticalMethods {
 	void loop(cv::Mat frame, float dt) {
 		auto [_, right3D] = processController(frame, dt, false);  // right
 		auto [__, left3D] = processController(frame, dt, true);  // left
-		opticalMethods::right3D = vrmath::posFilter(lastRight3D, right3D, 0.f, 5.f);
-		opticalMethods::left3D = vrmath::posFilter(lastLeft3D, left3D, 0.f, 5.f);
+		opticalMethods::right3D = vrmath::posFilter(lastRight3D, right3D, 0.f, 0.f) / 100.f - HEAD_POSITION;
+		opticalMethods::left3D = vrmath::posFilter(lastLeft3D, left3D, 0.f, 0.f) / 100.f - HEAD_POSITION;
 		lastRight3D = right3D;
 		lastLeft3D = left3D;
 	}

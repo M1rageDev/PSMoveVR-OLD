@@ -8,25 +8,26 @@ RenderGrid::RenderGrid(Shader* shader_, int w, int h) {
 	shader = shader_;
 
 	std::vector<glm::vec3> verts;
-	std::vector<unsigned int> indices;
+	std::vector<glm::uvec4> indices;
 
 	for (int j = 0; j < h; j++) {
 		for (int i = 0; i < w; i++) {
-			float x = (float)i;
+			float x = (float)i/(float)w;
 			float y = -1.f;
-			float z = (float)j;
+			float z = (float)j / (float)h;
 			verts.push_back(glm::vec3(x, y, z));
 		}
 	}
 
-	for (int i = 0; i < h; i++) {
-		if (i != w - 1) {
-			indices.push_back(i);
-			indices.push_back(i + w);
-		}
-		if (i != h - 1) {
-			indices.push_back(i);
-			indices.push_back(i + 1);
+	for (int j = 0; j < h; ++j) {
+		for (int i = 0; i < w; ++i) {
+
+			int row1 = j * (h + 1);
+			int row2 = (j + 1) * (w + 1);
+
+			indices.push_back(glm::uvec4(row1 + i, row1 + i + 1, row1 + i + 1, row2 + i + 1));
+			indices.push_back(glm::uvec4(row2 + i + 1, row2 + i, row2 + i, row1 + i));
+
 		}
 	}
 
@@ -39,10 +40,10 @@ RenderGrid::RenderGrid(Shader* shader_, int w, int h) {
 	glBindVertexArray(VAO);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(verts[0]) * verts.size(), verts.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(verts[0]) * verts.size(), glm::value_ptr(verts[0]), GL_STATIC_DRAW);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), indices.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0]) * indices.size(), glm::value_ptr(indices[0]), GL_STATIC_DRAW);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);

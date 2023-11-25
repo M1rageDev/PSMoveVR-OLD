@@ -5,7 +5,15 @@
 #include "MagwickAHRS.h"
 #include "psmoveapi/psmoveapi.h"
 
-const glm::quat MOVE_Q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
+const glm::quat MOVE_Q90 = glm::quat(0.7071069f, 0.7071067f, 0.f, 0.f);
+const glm::quat MOVE_Q0 = glm::quat(1.f, 0.f, 0.f, 0.f);
+const glm::vec3 MOVE_FWD = glm::vec3(0, 0, 1);
+const glm::vec3 MOVE_UP = glm::vec3(0, 1, 0);
+const glm::vec3 MOVE_RT = glm::vec3(1, 0, 0);
+const glm::mat4 MOVE_TRANSFORM = glm::mat4(MOVE_RT.x, MOVE_UP.x, MOVE_FWD.x, 0.f,
+	MOVE_RT.y, MOVE_UP.y, MOVE_FWD.y, 0.f,
+	MOVE_RT.z, MOVE_UP.z, MOVE_FWD.z, 0.f,
+	0.f, 0.f, 0.f, 1.f);
 
 struct ButtonStructure {
 	float trigger = 0.f;
@@ -23,6 +31,8 @@ struct ControllerStructure {
 	glm::vec3 gyro = { 0.f, 0.f, 0.f };
 	glm::quat orientation = glm::quat();
 
+	glm::quat recenter = glm::quat(1.f, 0.f, 0.f, 0.f);
+
 	glm::vec3 gyroOffsets = { 0.f, 0.f, 0.f };
 
 	float timestep = 0.f;
@@ -36,7 +46,7 @@ struct ControllerStructure {
 		accel = glm::vec3(controller->accelerometer.x, controller->accelerometer.y, controller->accelerometer.z);
 		gyro = glm::vec3(controller->gyroscope.x, controller->gyroscope.y, controller->gyroscope.z);
 		ahrs.update(gyro - gyroOffsets, accel, mBeta, timestep);
-		orientation = ahrs.q * MOVE_Q90;
+		orientation = glm::quat(MOVE_TRANSFORM * glm::mat4(ahrs.q * MOVE_Q0)) * recenter;
 
 		controller->color = color;
 		controller->rumble = rumble;

@@ -5,11 +5,17 @@
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
 
+#include <glm/vec3.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "glm/gtx/string_cast.hpp"
+
 #include <stdio.h>
 #include <vector>
 
 #ifndef VRCAMCALIB_H
 #define VRCAMCALIB_H
+#define GLM_ENABLE_EXPERIMENTAL
 
 // A4 paper is (10.5, 14.85)
 inline std::vector<cv::Point3f> CALIBRATION_MAT_OBJECT;
@@ -65,12 +71,19 @@ inline std::tuple<bool, cv::Mat, cv::Mat> calibrateCamera(cv::Mat image, bool fi
 	}
 }
 
-inline std::tuple<bool, cv::Mat> calibrateWorldMatrix(std::vector<cv::Point2f> samples, cv::Mat cameraMatrix, cv::Mat cameraDistortion) {
+inline std::tuple<bool, glm::mat4, cv::Mat, cv::Mat> calibrateWorldMatrix(std::vector<cv::Point2f> samples, cv::Mat cameraMatrix, cv::Mat cameraDistortion) {
+	/*
 	CALIBRATION_MAT_OBJECT = {
 		cv::Point3f(-10.5f, 0.f, -14.85f),
 		cv::Point3f(10.5f, 0.f, 14.85f),
 		cv::Point3f(-10.5f, 0.f, 14.85f),
 		cv::Point3f(10.5f, 0.f, -14.85f)
+	};*/
+	CALIBRATION_MAT_OBJECT = {
+		cv::Point3f(-23.75f, 0.f, -26.7f),
+		cv::Point3f(23.75f, 0.f, 26.7f),
+		cv::Point3f(-23.75f, 0.f, 26.7f),
+		cv::Point3f(23.75f, 0.f, -26.7f)
 	};
 
 	cv::Mat rvecs, tvecs;
@@ -78,14 +91,35 @@ inline std::tuple<bool, cv::Mat> calibrateWorldMatrix(std::vector<cv::Point2f> s
 
 	if (ret) {
 		std::cout << "Computing inverse camera pose..." << std::endl;
-		cv::Mat R, inv_R, mtx;
+		cv::Mat R;
 		cv::Rodrigues(rvecs, R);
-		cv::invert(R, inv_R);
-		cv::hconcat(inv_R, tvecs, mtx);
-		return { true,  mtx };
+
+		float rotMat[9];
+		for (int i = 0; i < 9; i++)
+		{
+			rotMat[i] = static_cast<float>(R.at<double>(i));
+		}
+
+		cv::Mat R_inv = R.t();
+		cv::Mat tvecInv = -R_inv * tvecs; // translation of the inverse R|t transform
+		float tv[3];
+		for (int i = 0; i < 3; i++)
+		{
+			tv[i] = static_cast<float>(tvecInv.at<double>(i));
+		}
+
+		float RTMat[] = {
+			rotMat[0], rotMat[1], rotMat[2], 0.0f,
+			rotMat[3], rotMat[4], rotMat[5], 0.0f,
+			rotMat[6], rotMat[7], rotMat[8], 0.0f,
+			tv[0], tv[1], tv[2], 1.0f };
+
+		glm::mat4 mtx = glm::make_mat4(RTMat);
+		std::cout << glm::to_string(mtx) << std::endl;
+		return { true, mtx, rvecs, tvecs };
 	}
 	else {
-		return { false, cv::Mat() };
+		return { false, glm::mat4(), cv::Mat(), cv::Mat() };
 	}
 }
 #endif

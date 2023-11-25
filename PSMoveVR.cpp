@@ -1,3 +1,8 @@
+#include <WinSock2.h>
+#include <windows.h>
+#include <ws2tcpip.h>
+#include <sys/types.h> 
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/vec3.hpp>
@@ -14,6 +19,7 @@
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
+#include <opencv2/core/utils/logger.hpp>
 
 #include <psmoveapi/psmove.h>
 #include "ControllerHandler.h"
@@ -38,6 +44,12 @@
 #include <format>
 #include <algorithm>
 
+#pragma comment(lib, "Ws2_32.lib")
+#pragma comment (lib, "Mswsock.lib")
+#pragma comment (lib, "AdvApi32.lib")
+
+#define UDP_SEND_PORT 49152
+
 using namespace ps3eye;
 
 GLFWwindow* window;
@@ -52,6 +64,10 @@ cv::Size videoSizeCV(width, height);
 ControllerHandler moves("00:06:f7:c9:a1:fb", "00:13:8a:9c:31:42");
 psmoveapi::PSMoveAPI moveAPI(&moves);
 bool controllerLoopRunning = true;
+bool lastPressedTri = false;
+float recenterTimer = 0.f;
+
+const std::string UDP_BUF = "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|0|0|0|0|0|0|0|0|{}|{}|0|0|0|0|0|0|0|0";
 
 float opticalTimestep = 0.f;
 float opticalLastTick = 0.f;
@@ -65,6 +81,8 @@ float camCalibSquareSize = 2.5f;
 
 int camPoseCalibStage = 0;
 std::vector<cv::Point2f> camPoseCalibSamples;
+glm::mat4 camPoseCalibMatrix;
+cv::Mat camPoseCalibRvec, camPoseCalibTvec;
 
 void captureCameraImage(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 	eyes[0]->getFrame(videoPixels);
@@ -84,9 +102,72 @@ void opticalTask(PS3EYECam::PS3EYERef* eyes, cv::Mat img) {
 
 		if (currentApplicationStage == 0 || currentApplicationStage == 4) {
 			captureCameraImage(eyes, img);
-			opticalMethods::loop(cv::Mat(videoSizeCV, CV_8UC3, videoPixels), opticalTimestep / 1000.f);
+			opticalMethods::loop(img, opticalTimestep / 1000.f);
 		}
 	}
+}
+
+void commsTask() {
+	Sleep(2000);
+
+	WSADATA wsaData;
+	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		printf("WSAStartup failed: %d\n", iResult);
+		exit(1);
+		return;
+	}
+
+	SOCKET sock = INVALID_SOCKET;
+	if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET)
+	{
+		std::cerr << "Failed the socket with error: " << WSAGetLastError() << '\n';
+		exit(1);
+		return;
+	}
+
+	sockaddr_in remoteAddr;
+	ZeroMemory(&remoteAddr, sizeof(remoteAddr));
+	remoteAddr.sin_family = AF_INET;
+	remoteAddr.sin_port = htons(UDP_SEND_PORT);
+	inet_pton(AF_INET, "127.0.0.1", &remoteAddr.sin_addr);
+
+	while (controllerLoopRunning) {
+		if (currentApplicationStage == 0) {
+			// actual sending
+			float rxcL = opticalMethods::left3D.x;
+			float rycL = opticalMethods::left3D.y;
+			float rzcL = opticalMethods::left3D.z;
+			float qwL = moves.left.orientation.w;
+			float qxL = moves.left.orientation.x;
+			float qyL = moves.left.orientation.z;
+			float qzL = -moves.left.orientation.y;
+			float trigL = moves.left.buttons.trigger;
+
+			float rxcR = opticalMethods::right3D.x;
+			float rycR = opticalMethods::right3D.y;
+			float rzcR = opticalMethods::right3D.z;
+			float qwR = moves.right.orientation.w;
+			float qxR = moves.right.orientation.x;
+			float qyR = moves.right.orientation.z;
+			float qzR = -moves.right.orientation.y;
+			float trigR = moves.right.buttons.trigger;
+			
+			std::string strBuf = std::vformat(UDP_BUF, std::make_format_args(rxcL, rycL, rzcL, qwL, qxL, qyL, qzL, rxcR, rycR, rzcR, qwR, qxR, qyR, qzR, trigL, trigR));
+			const char* sendBuf = strBuf.c_str();
+
+			int sent = sendto(sock, sendBuf, strlen(sendBuf), 0, (sockaddr*)&remoteAddr, sizeof(remoteAddr));
+			if (sent == SOCKET_ERROR)
+			{
+				std::cerr << "Failed the sendto with error: " << WSAGetLastError() << '\n';
+				exit(1);
+				return;
+			}
+		}
+	}
+
+	closesocket(sock);
+	WSACleanup();
 }
 
 void showCameraWindow(cv::Mat img, const char* name) {
@@ -130,6 +211,9 @@ std::tuple<bool, cv::Scalar, cv::Scalar> colorCalibrationStage(PS3EYECam::PS3EYE
 
 int main(int argc, char** argv)
 {
+	// CV
+	cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_ERROR);
+
 	// GL, GLAD and GLFW
 	if (!glfwInit())
 		return -1;
@@ -150,7 +234,7 @@ int main(int argc, char** argv)
 
 	// PS3 EYE
 	std::vector<PS3EYECam::PS3EYERef> devices = PS3EYECam::getDevices();
-	std::cout << "found " << devices.size() << " PS3 eyes" << std::endl;
+	std::cout << "Found " << devices.size() << " PS3 eyes." << std::endl;
 	PS3EYECam::PS3EYERef* eyes = new PS3EYECam::PS3EYERef[devices.size()];
 	for (int i = 0; i < devices.size(); i++) {
 		PS3EYECam::PS3EYERef eye = devices.at(i);
@@ -166,20 +250,10 @@ int main(int argc, char** argv)
 	moves.left.color = { 0.f, 1.f, 1.f };
 	moves.right.color = { 1.f, 0.f, 1.f };
 
-	// controller transformations
-	glm::vec3 forwardDir = glm::vec3(0, 0, 1);
-	glm::vec3 upDir = glm::vec3(0, 1, 0);
-	glm::vec3 rightDir = glm::vec3(1, 0, 0);
-	glm::mat4 controllerTransform = glm::mat4(rightDir.x, upDir.x, forwardDir.x, 0.f,
-											  rightDir.y, upDir.y, forwardDir.y, 0.f,
-											  rightDir.z, upDir.z, forwardDir.z, 0.f,
-											  0.f,        0.f,     0.f,          1.f);
-	glm::quat q90 = glm::quat(0.7071069f, -0.7071067f, 0.f, 0.f);
-
 	// realtime video
 	videoPixels = new unsigned char[width * height * 3];
 	eyes[0]->getFrame(videoPixels);
-	cv::Mat camImg(width, height, CV_8UC3, videoPixels);
+	cv::Mat camImg(videoSizeCV, CV_8UC3, videoPixels);
 
 	// realtime visualization
 	Shader gridShader = Shader("shaders/grid.vert", "shaders/grid.frag");
@@ -193,7 +267,7 @@ int main(int argc, char** argv)
 	Texture controllerSpecular = Texture("textures/psmove_spec.png");
 
 	ImGuiGL controllerWindow = ImGuiGL(640, 480);
-	glm::mat4 proj = glm::perspective(glm::radians(80.f), 640.f / 480.f, 0.1f, 100.f);
+	glm::mat4 proj = glm::perspective(glm::radians(80.f), 640.f / 480.f, 0.01f, 1000.f);
 
 	// realtime video texture
 	glGenTextures(1, &camTexture);
@@ -224,6 +298,7 @@ int main(int argc, char** argv)
 	// tasks
 	std::thread controllerTaskThread(controllerLoopTask);
 	std::thread opticalTaskThread(opticalTask, eyes, camImg);
+	std::thread commsTaskThread(commsTask);
 
 	// main loop
 	while (!glfwWindowShouldClose(window))
@@ -237,6 +312,27 @@ int main(int argc, char** argv)
 		switch (currentApplicationStage) {
 		case 0: // main stage
 		{
+			// recenter
+			if (moves.right.buttons.triangle && !(lastPressedTri)) {
+				opticalMethods::HEAD_POSITION = opticalMethods::right3D;
+			}
+			lastPressedTri = moves.right.buttons.triangle;
+
+			// dynamic undrift
+			/*
+			if (vrmath::valInThresh(moves.right.accel.y, 1.f, 0.15f) && vrmath::valInThresh(moves.left.accel.y, 1.f, 0.15f)) {
+				recenterTimer += 1000.0f / ImGui::GetIO().Framerate;
+			}
+			else {
+				recenterTimer = 0.f;
+			}
+
+			if (recenterTimer >= 2.f) {
+				moves.right.recenter = glm::inverse(glm::quat(moves.right.orientation)) * MOVE_Q90;
+				moves.left.recenter = glm::inverse(glm::quat(moves.left.orientation)) * MOVE_Q90;
+				recenterTimer = 0.f;
+			}*/
+
 			// controllers
 			glm::quat sensorQuatL = moves.left.orientation;
 			glm::quat glSpaceQuatL = glm::quat(sensorQuatL.w, sensorQuatL.x, sensorQuatL.z, -sensorQuatL.y);
@@ -265,20 +361,20 @@ int main(int argc, char** argv)
 			controllerShader.SetInt("textureDiff", 3);
 
 			// left pass
-			glm::mat4 transformMatrix = controllerTransform * glm::mat4(glSpaceQuatL);
+			glm::mat4 transformMatrix = glm::mat4(glSpaceQuatL);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::left3D / 100.f, 1.f) + glm::vec4(0.f, 0.f, 2.f, 0.f));
+			controllerShader.SetVector4("translate", opticalMethods::left3D + glm::vec4(0.f, 0.f, 2.f, 0.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.left.color.r, moves.left.color.g, moves.left.color.b));
 			GlCall(controllerGL.Draw());
 
 			// right pass
-			transformMatrix = controllerTransform * glm::mat4(glSpaceQuatR);
+			transformMatrix = glm::mat4(glSpaceQuatR);
 			controllerShader.SetMatrix4("transform", transformMatrix);
-			controllerShader.SetVector4("translate", glm::vec4(opticalMethods::right3D / 100.f, 1.f) + glm::vec4(0.f, 0.f, 2.f, 0.f));
+			controllerShader.SetVector4("translate", opticalMethods::right3D + glm::vec4(0.f, 0.f, 2.f, 0.f));
 			controllerShader.SetVector3("bulbColor", glm::vec3(moves.right.color.r, moves.right.color.g, moves.right.color.b));
 			GlCall(controllerGL.Draw());
 
-			// grid (broken)
+			//grid (broken)
 			//gridShader.Use();
 			//gridShader.SetMatrix4("projection", proj);
 			//gridShader.SetVector3("color", glm::vec3(1.f, 1.f, 1.f));
@@ -293,7 +389,7 @@ int main(int argc, char** argv)
 
 			// diagnostics
 			ImGui::Begin("Diagnostics");
-			
+			ImGui::Text("%.2f", recenterTimer);
 			ImGui::Text("Main thread running at %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 			ImGui::Text("Optical thread running at %.3f ms/frame (%.1f FPS)", opticalTimestep, 1000.f / opticalTimestep);
 			if (moves.leftConnected) {
@@ -376,13 +472,13 @@ int main(int argc, char** argv)
 			ImGui::Text("This is the camera calibration stage. Please put a chessboard (doesn't matter if it's printed) in front of the camera so that it's seen and press the Capture button. Make sure to have different angles in each capture. Try to take at least 15 shots.");
 			ImGui::Text("Captured frames: %i", capturedFramesCamCalib);
 			if (ImGui::Button("Capture")) {
-				calibrateCamera(cv::Mat(cv::Size(width, height), CV_8UC3, videoPixels), false);
+				calibrateCamera(cv::Mat(videoSizeCV, CV_8UC3, videoPixels), false);
 				capturedFramesCamCalib++;
 			}
 			if (ImGui::Button("Finish")) {
 				eyes[0]->setExposure(20);
 				eyes[0]->setGain(0);
-				auto [ret, mat, dist] = calibrateCamera(cv::Mat(cv::Size(width, height), CV_8UC3, videoPixels), true);
+				auto [ret, mat, dist] = calibrateCamera(cv::Mat(videoSizeCV, CV_8UC3, videoPixels), true);
 				opticalMethods::CAMERA_MAT = mat;
 				opticalMethods::CAMERA_DIST = dist;
 				opticalMethods::saveCamera();
@@ -395,7 +491,6 @@ int main(int argc, char** argv)
 		case 4: // camera pose calibration
 		{
 			captureCameraImage(eyes, camImg);
-			showCameraWindow(camImg, "Camera output");
 
 			ImGui::Begin("Camera pose calibration");
 			switch (camPoseCalibStage) {
@@ -415,12 +510,37 @@ int main(int argc, char** argv)
 				ImGui::Text("Place the RIGHT controller in corner 4 and click the 'Next' button");
 				break;
 			case 5:
-				// calibrate
-				auto [ret, matrix] = calibrateWorldMatrix(camPoseCalibSamples, opticalMethods::CAMERA_MAT, opticalMethods::CAMERA_DIST);
-				std::cout << matrix << std::endl;
-				opticalMethods::CAMERA_POSE = matrix;
+			{
+				// calibrate 
+				auto [ret, camPoseCalibMatrix_, camPoseCalibRvec_, camPoseCalibTvec_] = calibrateWorldMatrix(camPoseCalibSamples, opticalMethods::CAMERA_MAT, opticalMethods::CAMERA_DIST);
+				camPoseCalibMatrix = camPoseCalibMatrix_;
+				camPoseCalibRvec = camPoseCalibRvec_;
+				camPoseCalibTvec = camPoseCalibTvec_;
+				eyes[0]->setExposure(150);
+				eyes[0]->setGain(100);
+				camPoseCalibStage++;
+				break;
+			}
+			case 6:
+			{
+				// vis
+				cv::line(camImg, camPoseCalibSamples[0], camPoseCalibSamples[3], cv::Scalar(255, 255, 255), 3);
+				cv::line(camImg, camPoseCalibSamples[3], camPoseCalibSamples[1], cv::Scalar(255, 255, 255), 3);
+				cv::line(camImg, camPoseCalibSamples[1], camPoseCalibSamples[2], cv::Scalar(255, 255, 255), 3);
+				cv::line(camImg, camPoseCalibSamples[2], camPoseCalibSamples[0], cv::Scalar(255, 255, 255), 3);
+				cv::drawFrameAxes(camImg, opticalMethods::CAMERA_MAT, opticalMethods::CAMERA_DIST, camPoseCalibRvec, camPoseCalibTvec, 10.f);
+				break;
+			}
+			case 7:
+			{
+				// end
+				eyes[0]->setExposure(20);
+				eyes[0]->setGain(0);
+				opticalMethods::CAMERA_POSE = glm::transpose(camPoseCalibMatrix);
 				opticalMethods::saveCameraPose();
 				currentApplicationStage = 0;
+				break;
+			}
 			}
 
 			if (ImGui::Button("Next")) {
@@ -429,11 +549,13 @@ int main(int argc, char** argv)
 					eyes[0]->setGain(0);
 				}
 				else {
-					camPoseCalibSamples.push_back(cv::Point2f(opticalMethods::right2D.x, opticalMethods::right2D.y));
+					if (camPoseCalibStage < 5) camPoseCalibSamples.push_back(cv::Point2f(opticalMethods::right2D.x, opticalMethods::right2D.y));
 				}
 				camPoseCalibStage++;
 			}
 			ImGui::End();
+
+			showCameraWindow(camImg, "Camera output");
 
 			break;
 		}
@@ -449,6 +571,7 @@ int main(int argc, char** argv)
 	controllerLoopRunning = false;
 	controllerTaskThread.join();
 	opticalTaskThread.join();
+	commsTaskThread.join();
 	for (int i = 0; i < sizeof(eyes) / sizeof(eyes[0]); i++)
 		eyes[i]->stop();
 	glDeleteTextures(1, &camTexture);
